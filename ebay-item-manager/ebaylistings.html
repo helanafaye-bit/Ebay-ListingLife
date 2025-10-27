@@ -21,6 +21,7 @@
                 <div class="add-section">
                     <button id="addCategoryBtn" class="btn btn-primary">Add New Category</button>
                     <button id="addItemBtn" class="btn btn-secondary">Add New Item</button>
+                    <button id="itemsEndedBtn" class="btn btn-danger">Items Ended</button>
                 </div>
 
                 <div id="categoriesContainer">
@@ -45,6 +46,18 @@
                     </div>
                     <div id="categoryItemsList">
                         <!-- Items for selected category will be shown here -->
+                    </div>
+                </div>
+
+                <div id="endedItemsContainer" style="display: none;">
+                    <div class="category-items-header">
+                        <button id="backToCategoriesFromEnded" class="btn btn-secondary">← Back to Categories</button>
+                        <div class="category-title-section">
+                            <h2>Items Ended (0 Days Left)</h2>
+                        </div>
+                    </div>
+                    <div id="endedItemsList">
+                        <!-- Ended items will be shown here -->
                     </div>
                 </div>
             </main>

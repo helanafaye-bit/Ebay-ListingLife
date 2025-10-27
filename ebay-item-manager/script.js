@@ -6,7 +6,7 @@ class EbayListingLife {
         this.items = [];
         this.currentEditingCategory = null;
         this.currentEditingItem = null;
-        this.currentView = 'categories'; // 'categories' or 'items'
+        this.currentView = 'categories'; // 'categories', 'items', or 'ended'
         this.selectedCategoryId = null;
         this.currentDetailItem = null;
         this.sidebarMode = 'recent'; // 'recent' or 'ending'
@@ -43,10 +43,12 @@ class EbayListingLife {
 
         // Navigation
         document.getElementById('backToCategories').addEventListener('click', () => this.showCategoriesView());
+        document.getElementById('backToCategoriesFromEnded').addEventListener('click', () => this.showCategoriesView());
 
         // Modal buttons
         document.getElementById('addCategoryBtn').addEventListener('click', () => this.openCategoryModal());
         document.getElementById('addItemBtn').addEventListener('click', () => this.openItemModal());
+        document.getElementById('itemsEndedBtn').addEventListener('click', () => this.showEndedItemsView());
 
         // Sidebar toggle buttons
         document.getElementById('recentToggle').addEventListener('click', () => this.setSidebarMode('recent'));
@@ -275,6 +277,11 @@ class EbayListingLife {
             this.showCategoryItems(this.selectedCategoryId);
         }
         
+        // If we're viewing ended items, refresh that view
+        if (this.currentView === 'ended') {
+            this.renderEndedItems();
+        }
+        
         this.closeModals();
     }
 
@@ -289,6 +296,11 @@ class EbayListingLife {
             if (this.currentView === 'items' && this.selectedCategoryId) {
                 this.showCategoryItems(this.selectedCategoryId);
             }
+            
+            // If we're viewing ended items, refresh that view
+            if (this.currentView === 'ended') {
+                this.renderEndedItems();
+            }
         }
     }
 
@@ -298,7 +310,17 @@ class EbayListingLife {
         this.selectedCategoryId = null;
         document.getElementById('categoriesContainer').style.display = 'block';
         document.getElementById('categoryItemsContainer').style.display = 'none';
+        document.getElementById('endedItemsContainer').style.display = 'none';
         this.renderCategories();
+    }
+
+    showEndedItemsView() {
+        this.currentView = 'ended';
+        this.selectedCategoryId = null;
+        document.getElementById('categoriesContainer').style.display = 'none';
+        document.getElementById('categoryItemsContainer').style.display = 'none';
+        document.getElementById('endedItemsContainer').style.display = 'block';
+        this.renderEndedItems();
     }
 
     showCategoryItems(categoryId) {
@@ -306,6 +328,7 @@ class EbayListingLife {
         this.selectedCategoryId = categoryId;
         document.getElementById('categoriesContainer').style.display = 'none';
         document.getElementById('categoryItemsContainer').style.display = 'block';
+        document.getElementById('endedItemsContainer').style.display = 'none';
         
         const category = this.categories.find(cat => cat.id === categoryId);
         const categoryItems = this.items.filter(item => item.categoryId === categoryId);
@@ -498,6 +521,58 @@ class EbayListingLife {
                         <div class="item-date">Added: ${item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown'}</div>
                         ${item.note ? `<div class="item-notes">${item.note.substring(0, 50)}${item.note.length > 50 ? '...' : ''}</div>` : ''}
                         <div class="item-days-left ${urgencyClass}">${daysText}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-small btn-primary edit-btn" data-item-id="${item.id}">Edit</button>
+                        <button class="btn btn-small btn-danger delete-btn" data-item-id="${item.id}">Delete</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    renderEndedItems() {
+        const container = document.getElementById('endedItemsList');
+        
+        // Filter items that have 0 or negative days left
+        const endedItems = this.items.filter(item => {
+            const daysLeft = this.calculateDaysLeft(item);
+            return daysLeft <= 0;
+        });
+
+        if (endedItems.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No ended items</h3>
+                    <p>All your items are still active!</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="items-list">';
+        
+        endedItems.forEach(item => {
+            const category = this.categories.find(cat => cat.id === item.categoryId);
+            const photoHtml = item.photo ? 
+                `<div class="item-photo"><img src="${item.photo}" alt="${item.name}" onerror="this.style.display='none'"></div>` : 
+                `<div class="item-photo no-photo"><span>📷</span></div>`;
+            
+            // Calculate days left (should be 0 or negative)
+            const daysLeft = this.calculateDaysLeft(item);
+            const daysText = daysLeft <= 0 ? 'Ended' : `${daysLeft} days left`;
+            
+            html += `
+                <div class="item item-clickable" data-item-id="${item.id}">
+                    ${photoHtml}
+                    <div class="item-info">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-date">Category: ${category ? category.name : 'Unknown'} | Added: ${item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown'}</div>
+                        ${item.note ? `<div class="item-notes">${item.note.substring(0, 50)}${item.note.length > 50 ? '...' : ''}</div>` : ''}
+                        <div class="item-days-left ended">${daysText}</div>
                     </div>
                     <div class="item-actions">
                         <button class="btn btn-small btn-primary edit-btn" data-item-id="${item.id}">Edit</button>
@@ -826,6 +901,11 @@ class EbayListingLife {
         // If we're viewing items for a category, refresh that view
         if (this.currentView === 'items' && this.selectedCategoryId) {
             this.showCategoryItems(this.selectedCategoryId);
+        }
+        
+        // If we're viewing ended items, refresh that view
+        if (this.currentView === 'ended') {
+            this.renderEndedItems();
         }
         
         this.closeItemDetailModal();
