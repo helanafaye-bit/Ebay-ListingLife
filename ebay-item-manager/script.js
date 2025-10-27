@@ -272,6 +272,11 @@ class EbayListingLife {
             if (this.currentEditingItem.manuallyEnded && duration > 0) {
                 this.currentEditingItem.manuallyEnded = false;
                 delete this.currentEditingItem.endedDate;
+                
+                // Show a message that the item has been restored to its category
+                setTimeout(() => {
+                    alert(`Item "${this.currentEditingItem.name}" has been restored to its category with ${duration} days duration.`);
+                }, 100);
             }
         } else {
             // Add new item
@@ -386,7 +391,7 @@ class EbayListingLife {
         document.getElementById('endedItemsContainer').style.display = 'none';
         
         const category = this.categories.find(cat => cat.id === categoryId);
-        const categoryItems = this.items.filter(item => item.categoryId === categoryId);
+        const categoryItems = this.items.filter(item => item.categoryId === categoryId && !item.manuallyEnded);
         
         // Update header
         document.getElementById('currentCategoryTitle').textContent = category.name;
@@ -407,7 +412,7 @@ class EbayListingLife {
 
     handleCategorySort(e) {
         const sortOrder = e.target.value;
-        const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId);
+        const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId && !item.manuallyEnded);
         
         // Sort items based on selection
         if (sortOrder === 'newest') {
@@ -454,9 +459,11 @@ class EbayListingLife {
         }
 
         const matchingItems = this.items.filter(item => 
-            item.name.toLowerCase().includes(searchTerm) ||
-            (item.description && item.description.toLowerCase().includes(searchTerm)) ||
-            (item.note && item.note.toLowerCase().includes(searchTerm))
+            !item.manuallyEnded && (
+                item.name.toLowerCase().includes(searchTerm) ||
+                (item.description && item.description.toLowerCase().includes(searchTerm)) ||
+                (item.note && item.note.toLowerCase().includes(searchTerm))
+            )
         );
 
         this.renderSearchResults(searchTerm, matchingItems);
@@ -552,10 +559,13 @@ class EbayListingLife {
     renderCategoryItems(items) {
         const container = document.getElementById('categoryItemsList');
         
-        if (items.length === 0) {
+        // Filter out manually ended items from category view
+        const activeItems = items.filter(item => !item.manuallyEnded);
+        
+        if (activeItems.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
-                    <h3>No items in this category yet</h3>
+                    <h3>No active items in this category yet</h3>
                     <p>Add your first item to this category!</p>
                 </div>
             `;
@@ -564,7 +574,7 @@ class EbayListingLife {
 
         let html = '<div class="items-list">';
         
-        items.forEach(item => {
+        activeItems.forEach(item => {
             const photoHtml = item.photo ? 
                 `<div class="item-photo"><img src="${item.photo}" alt="${item.name}" onerror="this.style.display='none'"></div>` : 
                 `<div class="item-photo no-photo"><span>📷</span></div>`;
