@@ -125,6 +125,21 @@ class EbayListingLife {
                 return;
             }
             
+            // Handle END button clicks
+            if (e.target.matches('.end-btn')) {
+                const button = e.target;
+                const itemId = button.getAttribute('data-item-id');
+                
+                console.log('=== END BUTTON CLICKED ===');
+                console.log('Item ID:', itemId);
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                this.endItem(itemId);
+                return;
+            }
+            
             // Handle clicks on the item itself (not on buttons)
             const itemElement = e.target.closest('.item-clickable');
             if (itemElement && !e.target.closest('.item-actions')) {
@@ -252,6 +267,12 @@ class EbayListingLife {
             this.currentEditingItem.dateAdded = dateAdded;
             this.currentEditingItem.duration = duration;
             this.currentEditingItem.photo = photo;
+            
+            // If editing an ended item with new duration, clear the manually ended flag
+            if (this.currentEditingItem.manuallyEnded && duration > 0) {
+                this.currentEditingItem.manuallyEnded = false;
+                delete this.currentEditingItem.endedDate;
+            }
         } else {
             // Add new item
             const item = {
@@ -301,6 +322,40 @@ class EbayListingLife {
             if (this.currentView === 'ended') {
                 this.renderEndedItems();
             }
+        }
+    }
+
+    endItem(itemId) {
+        const item = this.items.find(i => i.id === itemId);
+        if (!item) {
+            console.error('Item not found for ending:', itemId);
+            return;
+        }
+
+        const itemName = item.name;
+        const category = this.categories.find(cat => cat.id === item.categoryId);
+        const categoryName = category ? category.name : 'Unknown';
+        
+        if (confirm(`Are you sure you want to end the item "${itemName}" from category "${categoryName}"?\n\nThis will move the item to the "Items Ended" list.`)) {
+            // Mark the item as manually ended
+            item.manuallyEnded = true;
+            item.endedDate = new Date().toISOString().split('T')[0];
+            
+            this.saveData();
+            this.renderCategories();
+            this.updateUrgentItems();
+            
+            // If we're viewing items for a category, refresh that view
+            if (this.currentView === 'items' && this.selectedCategoryId) {
+                this.showCategoryItems(this.selectedCategoryId);
+            }
+            
+            // If we're viewing ended items, refresh that view
+            if (this.currentView === 'ended') {
+                this.renderEndedItems();
+            }
+            
+            console.log(`Item "${itemName}" has been ended`);
         }
     }
 
@@ -378,6 +433,11 @@ class EbayListingLife {
     }
 
     calculateDaysLeft(item) {
+        // If item was manually ended, return 0
+        if (item.manuallyEnded) {
+            return 0;
+        }
+        
         const duration = item.duration || 30;
         const addedDate = new Date(item.dateAdded);
         const endDate = new Date(addedDate.getTime() + (duration * 24 * 60 * 60 * 1000));
@@ -432,6 +492,7 @@ class EbayListingLife {
                     </div>
                     <div class="item-actions">
                         <button class="btn btn-small btn-primary edit-btn" data-item-id="${item.id}">Edit</button>
+                        <button class="btn btn-small btn-warning end-btn" data-item-id="${item.id}">End</button>
                         <button class="btn btn-small btn-danger delete-btn" data-item-id="${item.id}">Delete</button>
                     </div>
                 </div>
@@ -524,6 +585,7 @@ class EbayListingLife {
                     </div>
                     <div class="item-actions">
                         <button class="btn btn-small btn-primary edit-btn" data-item-id="${item.id}">Edit</button>
+                        <button class="btn btn-small btn-warning end-btn" data-item-id="${item.id}">End</button>
                         <button class="btn btn-small btn-danger delete-btn" data-item-id="${item.id}">Delete</button>
                     </div>
                 </div>
@@ -563,7 +625,7 @@ class EbayListingLife {
             
             // Calculate days left (should be 0 or negative)
             const daysLeft = this.calculateDaysLeft(item);
-            const daysText = daysLeft <= 0 ? 'Ended' : `${daysLeft} days left`;
+            const daysText = item.manuallyEnded ? 'Manually Ended' : (daysLeft <= 0 ? 'Ended' : `${daysLeft} days left`);
             
             html += `
                 <div class="item item-clickable" data-item-id="${item.id}">
