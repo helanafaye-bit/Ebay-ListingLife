@@ -9,6 +9,7 @@ class EbayListingLife {
         this.currentView = 'categories'; // 'categories' or 'items'
         this.selectedCategoryId = null;
         this.currentDetailItem = null;
+        this.sidebarMode = 'recent'; // 'recent' or 'ending'
         
         this.init();
     }
@@ -47,6 +48,13 @@ class EbayListingLife {
         document.getElementById('addCategoryBtn').addEventListener('click', () => this.openCategoryModal());
         document.getElementById('addItemBtn').addEventListener('click', () => this.openItemModal());
 
+        // Sidebar toggle buttons
+        document.getElementById('recentToggle').addEventListener('click', () => this.setSidebarMode('recent'));
+        document.getElementById('endingToggle').addEventListener('click', () => this.setSidebarMode('ending'));
+
+        // Category sort dropdown
+        document.getElementById('categorySortSelect').addEventListener('change', (e) => this.handleCategorySort(e));
+
         // Modal forms
         document.getElementById('categoryForm').addEventListener('submit', (e) => this.handleCategorySubmit(e));
         document.getElementById('itemForm').addEventListener('submit', (e) => this.handleItemSubmit(e));
@@ -57,24 +65,71 @@ class EbayListingLife {
 
         // Close modals
         document.querySelectorAll('.close').forEach(closeBtn => {
-            closeBtn.addEventListener('click', () => this.closeModals());
+            closeBtn.addEventListener('click', (e) => {
+                console.log('Close button clicked');
+                const modal = e.target.closest('.modal');
+                if (modal) {
+                    console.log('Closing modal:', modal.id);
+                    modal.style.display = 'none';
+                }
+            });
         });
 
         // Close modals when clicking outside
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
-                this.closeModals();
+                console.log('Clicked outside modal, closing:', e.target.id);
+                e.target.style.display = 'none';
             }
         });
         
-        // Add event delegation for item clicks
+        // Clear and specific event delegation for buttons
         document.addEventListener('click', (e) => {
+            console.log('Click detected on:', e.target);
+            
+            
+            // Handle EDIT button clicks
+            if (e.target.matches('.edit-btn')) {
+                const button = e.target;
+                const itemId = button.getAttribute('data-item-id');
+                
+                console.log('=== EDIT BUTTON CLICKED ===');
+                console.log('Item ID:', itemId);
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const item = this.items.find(i => i.id === itemId);
+                if (item) {
+                    this.openItemModal(item);
+                } else {
+                    console.error('Item not found for editing:', itemId);
+                }
+                return;
+            }
+            
+            // Handle DELETE button clicks
+            if (e.target.matches('.delete-btn')) {
+                const button = e.target;
+                const itemId = button.getAttribute('data-item-id');
+                
+                console.log('=== DELETE BUTTON CLICKED ===');
+                console.log('Item ID:', itemId);
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                this.deleteItem(itemId);
+                return;
+            }
+            
+            // Handle clicks on the item itself (not on buttons)
             const itemElement = e.target.closest('.item-clickable');
             if (itemElement && !e.target.closest('.item-actions')) {
                 const itemId = itemElement.getAttribute('data-item-id');
                 if (itemId) {
-                    console.log('Item clicked via delegation:', itemId);
-                    this.openItemDetailModal(itemId);
+                    console.log('Item clicked (not button) for item:', itemId);
+                    this.openViewModal(itemId);
                 }
             }
         });
@@ -82,6 +137,9 @@ class EbayListingLife {
 
     // Category Management
     openCategoryModal(category = null) {
+        // Close all other modals first
+        this.closeAllModalsExcept('categoryModal');
+        
         this.currentEditingCategory = category;
         const modal = document.getElementById('categoryModal');
         const title = document.getElementById('categoryModalTitle');
@@ -90,7 +148,6 @@ class EbayListingLife {
         if (category) {
             title.textContent = 'Edit Category';
             document.getElementById('categoryName').value = category.name;
-            document.getElementById('categoryDuration').value = category.duration;
         } else {
             title.textContent = 'Add New Category';
             form.reset();
@@ -102,20 +159,17 @@ class EbayListingLife {
     handleCategorySubmit(e) {
         e.preventDefault();
         const name = document.getElementById('categoryName').value.trim();
-        const duration = parseInt(document.getElementById('categoryDuration').value);
 
-        if (!name || !duration) return;
+        if (!name) return;
 
         if (this.currentEditingCategory) {
             // Edit existing category
             this.currentEditingCategory.name = name;
-            this.currentEditingCategory.duration = duration;
         } else {
             // Add new category
             const category = {
                 id: Date.now().toString(),
                 name: name,
-                duration: duration,
                 createdAt: new Date().toISOString()
             };
             this.categories.push(category);
@@ -140,6 +194,9 @@ class EbayListingLife {
 
     // Item Management
     openItemModal(item = null) {
+        // Close all other modals first
+        this.closeAllModalsExcept('itemModal');
+        
         this.currentEditingItem = item;
         const modal = document.getElementById('itemModal');
         const title = document.getElementById('itemModalTitle');
@@ -149,10 +206,24 @@ class EbayListingLife {
             title.textContent = 'Edit Item';
             document.getElementById('itemCategory').value = item.categoryId;
             document.getElementById('itemName').value = item.name;
-            document.getElementById('itemRemovalDate').value = item.removalDate;
+            document.getElementById('itemDescription').value = item.description || '';
+            document.getElementById('itemNote').value = item.note || '';
+            document.getElementById('itemDateAdded').value = item.dateAdded || '';
+            document.getElementById('itemDuration').value = item.duration || '';
+            document.getElementById('itemPhoto').value = item.photo || '';
+            
+            // Show photo preview if exists
+            if (item.photo) {
+                this.previewPictureNew(item.photo);
+            } else {
+                document.getElementById('itemPhotoPreview').style.display = 'none';
+            }
         } else {
             title.textContent = 'Add New Item';
             form.reset();
+            document.getElementById('itemPhotoPreview').style.display = 'none';
+            // Set default date to today
+            document.getElementById('itemDateAdded').value = new Date().toISOString().split('T')[0];
         }
         
         modal.style.display = 'block';
@@ -162,22 +233,34 @@ class EbayListingLife {
         e.preventDefault();
         const categoryId = document.getElementById('itemCategory').value;
         const name = document.getElementById('itemName').value.trim();
-        const removalDate = document.getElementById('itemRemovalDate').value;
+        const description = document.getElementById('itemDescription').value.trim();
+        const note = document.getElementById('itemNote').value.trim();
+        const dateAdded = document.getElementById('itemDateAdded').value;
+        const duration = parseInt(document.getElementById('itemDuration').value);
+        const photo = document.getElementById('itemPhoto').value.trim();
 
-        if (!categoryId || !name || !removalDate) return;
+        if (!categoryId || !name || !dateAdded || !duration) return;
 
         if (this.currentEditingItem) {
             // Edit existing item
             this.currentEditingItem.categoryId = categoryId;
             this.currentEditingItem.name = name;
-            this.currentEditingItem.removalDate = removalDate;
+            this.currentEditingItem.description = description;
+            this.currentEditingItem.note = note;
+            this.currentEditingItem.dateAdded = dateAdded;
+            this.currentEditingItem.duration = duration;
+            this.currentEditingItem.photo = photo;
         } else {
             // Add new item
             const item = {
                 id: Date.now().toString(),
                 categoryId: categoryId,
                 name: name,
-                removalDate: removalDate,
+                description: description,
+                note: note,
+                dateAdded: dateAdded,
+                duration: duration,
+                photo: photo,
                 createdAt: new Date().toISOString()
             };
             this.items.push(item);
@@ -230,15 +313,52 @@ class EbayListingLife {
         // Update header
         document.getElementById('currentCategoryTitle').textContent = category.name;
         
+        // Reset sort dropdown to newest first
+        document.getElementById('categorySortSelect').value = 'newest';
+        
         // Calculate average duration for this category
         const avgDuration = categoryItems.length > 0 ? 
-            Math.round(categoryItems.reduce((sum, item) => sum + this.calculateDaysRemaining(item.removalDate), 0) / categoryItems.length) : 
-            category.duration;
+            Math.round(categoryItems.reduce((sum, item) => sum + (item.duration || 30), 0) / categoryItems.length) : 
+            30;
         
         document.getElementById('categoryDurationInfo').textContent = `Average: ${avgDuration} days`;
         
         // Render items
         this.renderCategoryItems(categoryItems);
+    }
+
+    handleCategorySort(e) {
+        const sortOrder = e.target.value;
+        const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId);
+        
+        // Sort items based on selection
+        if (sortOrder === 'newest') {
+            categoryItems.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+        } else if (sortOrder === 'oldest') {
+            categoryItems.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+        } else if (sortOrder === 'lowest-days') {
+            categoryItems.sort((a, b) => {
+                const aDaysLeft = this.calculateDaysLeft(a);
+                const bDaysLeft = this.calculateDaysLeft(b);
+                return aDaysLeft - bDaysLeft;
+            });
+        } else if (sortOrder === 'highest-days') {
+            categoryItems.sort((a, b) => {
+                const aDaysLeft = this.calculateDaysLeft(a);
+                const bDaysLeft = this.calculateDaysLeft(b);
+                return bDaysLeft - aDaysLeft;
+            });
+        }
+        
+        // Re-render items
+        this.renderCategoryItems(categoryItems);
+    }
+
+    calculateDaysLeft(item) {
+        const duration = item.duration || 30;
+        const addedDate = new Date(item.dateAdded);
+        const endDate = new Date(addedDate.getTime() + (duration * 24 * 60 * 60 * 1000));
+        return Math.ceil((endDate - new Date()) / (1000 * 60 * 60 * 24));
     }
 
     // Search Functionality
@@ -251,7 +371,9 @@ class EbayListingLife {
         }
 
         const matchingItems = this.items.filter(item => 
-            item.name.toLowerCase().includes(searchTerm)
+            item.name.toLowerCase().includes(searchTerm) ||
+            (item.description && item.description.toLowerCase().includes(searchTerm)) ||
+            (item.note && item.note.toLowerCase().includes(searchTerm))
         );
 
         this.renderSearchResults(searchTerm, matchingItems);
@@ -277,21 +399,17 @@ class EbayListingLife {
 
         matchingItems.forEach(item => {
             const category = this.categories.find(cat => cat.id === item.categoryId);
-            const daysRemaining = this.calculateDaysRemaining(item.removalDate);
-            const daysClass = this.getDaysClass(daysRemaining);
             
             html += `
                 <div class="item item-clickable" data-item-id="${item.id}">
                     <div class="item-info">
                         <div class="item-name">${this.highlightSearchTerm(item.name, searchTerm)}</div>
-                        <div class="item-date">Category: ${category ? category.name : 'Unknown'} | Remove by: ${this.formatDate(item.removalDate)}</div>
-                        ${item.notes ? `<div class="item-notes">${item.notes.substring(0, 50)}${item.notes.length > 50 ? '...' : ''}</div>` : ''}
+                        <div class="item-date">Category: ${category ? category.name : 'Unknown'} | Added: ${item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown'}</div>
+                        ${item.note ? `<div class="item-notes">${item.note.substring(0, 50)}${item.note.length > 50 ? '...' : ''}</div>` : ''}
                     </div>
                     <div class="item-actions">
-                        <span class="days-remaining ${daysClass}">${daysRemaining} days</span>
-                        <button class="btn btn-small btn-secondary" onclick="openItemDetail('${item.id}')">View</button>
-                        <button class="btn btn-small btn-primary" onclick="openItemEdit(${JSON.stringify(item).replace(/"/g, '&quot;')})">Edit</button>
-                        <button class="btn btn-small btn-danger" onclick="deleteItem('${item.id}')">Delete</button>
+                        <button class="btn btn-small btn-primary edit-btn" data-item-id="${item.id}">Edit</button>
+                        <button class="btn btn-small btn-danger delete-btn" data-item-id="${item.id}">Delete</button>
                     </div>
                 </div>
             `;
@@ -363,21 +481,27 @@ class EbayListingLife {
         let html = '<div class="items-list">';
         
         items.forEach(item => {
-            const daysRemaining = this.calculateDaysRemaining(item.removalDate);
-            const daysClass = this.getDaysClass(daysRemaining);
+            const photoHtml = item.photo ? 
+                `<div class="item-photo"><img src="${item.photo}" alt="${item.name}" onerror="this.style.display='none'"></div>` : 
+                `<div class="item-photo no-photo"><span>📷</span></div>`;
+            
+            // Calculate days left
+            const daysLeft = this.calculateDaysLeft(item);
+            const urgencyClass = this.getUrgencyClass(daysLeft);
+            const daysText = daysLeft <= 0 ? 'Ended' : `${daysLeft} days left`;
             
             html += `
                 <div class="item item-clickable" data-item-id="${item.id}">
+                    ${photoHtml}
                     <div class="item-info">
                         <div class="item-name">${item.name}</div>
-                        <div class="item-date">Remove by: ${this.formatDate(item.removalDate)}</div>
-                        ${item.notes ? `<div class="item-notes">${item.notes.substring(0, 50)}${item.notes.length > 50 ? '...' : ''}</div>` : ''}
+                        <div class="item-date">Added: ${item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown'}</div>
+                        ${item.note ? `<div class="item-notes">${item.note.substring(0, 50)}${item.note.length > 50 ? '...' : ''}</div>` : ''}
+                        <div class="item-days-left ${urgencyClass}">${daysText}</div>
                     </div>
                     <div class="item-actions">
-                        <span class="days-remaining ${daysClass}">${daysRemaining} days</span>
-                        <button class="btn btn-small btn-secondary" onclick="openItemDetail('${item.id}')">View</button>
-                        <button class="btn btn-small btn-primary" onclick="openItemEdit(${JSON.stringify(item).replace(/"/g, '&quot;')})">Edit</button>
-                        <button class="btn btn-small btn-danger" onclick="deleteItem('${item.id}')">Delete</button>
+                        <button class="btn btn-small btn-primary edit-btn" data-item-id="${item.id}">Edit</button>
+                        <button class="btn btn-small btn-danger delete-btn" data-item-id="${item.id}">Delete</button>
                     </div>
                 </div>
             `;
@@ -399,34 +523,113 @@ class EbayListingLife {
         });
     }
 
-    updateUrgentItems() {
-        const urgentItems = this.items.filter(item => {
-            const daysRemaining = this.calculateDaysRemaining(item.removalDate);
-            return daysRemaining <= 7;
-        }).sort((a, b) => this.calculateDaysRemaining(a.removalDate) - this.calculateDaysRemaining(b.removalDate));
+    setSidebarMode(mode) {
+        this.sidebarMode = mode;
+        
+        // Update button states
+        document.getElementById('recentToggle').classList.toggle('active', mode === 'recent');
+        document.getElementById('endingToggle').classList.toggle('active', mode === 'ending');
+        
+        // Update title
+        const title = document.getElementById('sidebarTitle');
+        title.textContent = mode === 'recent' ? 'Recently Added Items' : 'Items Ending Soonest';
+        
+        // Update the sidebar content
+        this.updateUrgentItems();
+    }
 
+    updateUrgentItems() {
         const container = document.getElementById('urgentItemsList');
         
-        if (urgentItems.length === 0) {
-            container.innerHTML = '<p style="color: #6c757d; font-style: italic;">No urgent items</p>';
+        if (this.sidebarMode === 'recent') {
+            this.updateRecentItems(container);
+        } else {
+            this.updateEndingSoonItems(container);
+        }
+    }
+
+    updateRecentItems(container) {
+        // Show items added in the last 7 days
+        const recentItems = this.items
+            .filter(item => {
+                if (!item.dateAdded) return false;
+                const addedDate = new Date(item.dateAdded);
+                const daysSinceAdded = Math.floor((new Date() - addedDate) / (1000 * 60 * 60 * 24));
+                return daysSinceAdded <= 7; // Items added in the last 7 days
+            })
+            .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+
+        if (recentItems.length === 0) {
+            container.innerHTML = '<p style="color: #6c757d; font-style: italic;">No recent items</p>';
             return;
         }
 
         let html = '';
-        urgentItems.forEach(item => {
+        recentItems.forEach(item => {
             const category = this.categories.find(cat => cat.id === item.categoryId);
-            const daysRemaining = this.calculateDaysRemaining(item.removalDate);
+            const daysSinceAdded = Math.floor((new Date() - new Date(item.dateAdded)) / (1000 * 60 * 60 * 24));
             
             html += `
                 <div class="urgent-item" onclick="app.showCategoryItems('${item.categoryId}')">
                     <div class="item-name">${item.name}</div>
-                    <div class="item-date">${category ? category.name : 'Unknown'} | ${this.formatDate(item.removalDate)}</div>
-                    <span class="days-remaining">${daysRemaining} days left</span>
+                    <div class="item-date">${category ? category.name : 'Unknown'} | ${this.formatDate(item.dateAdded)}</div>
+                    <span class="days-remaining">${daysSinceAdded} days ago</span>
                 </div>
             `;
         });
 
         container.innerHTML = html;
+    }
+
+    updateEndingSoonItems(container) {
+        // Calculate ending dates based on item-specific duration
+        const itemsWithEndDates = this.items.map(item => {
+            const category = this.categories.find(cat => cat.id === item.categoryId);
+            const duration = item.duration || 30; // Use item duration, default 30 days if not set
+            const addedDate = new Date(item.dateAdded);
+            const endDate = new Date(addedDate.getTime() + (duration * 24 * 60 * 60 * 1000));
+            const daysUntilEnd = Math.ceil((endDate - new Date()) / (1000 * 60 * 60 * 24));
+            
+            return {
+                ...item,
+                endDate: endDate,
+                daysUntilEnd: daysUntilEnd,
+                category: category
+            };
+        });
+
+        // Filter items that are ending within 14 days and sort by days until end
+        const endingSoonItems = itemsWithEndDates
+            .filter(item => item.daysUntilEnd <= 14)
+            .sort((a, b) => a.daysUntilEnd - b.daysUntilEnd);
+
+        if (endingSoonItems.length === 0) {
+            container.innerHTML = '<p style="color: #6c757d; font-style: italic;">No items ending soon</p>';
+            return;
+        }
+
+        let html = '';
+        endingSoonItems.forEach(item => {
+            const urgencyClass = this.getUrgencyClass(item.daysUntilEnd);
+            const daysText = item.daysUntilEnd <= 0 ? 'Ended' : `${item.daysUntilEnd} days left`;
+            
+            html += `
+                <div class="urgent-item ending-soon ${urgencyClass}" onclick="app.showCategoryItems('${item.categoryId}')">
+                    <div class="item-name">${item.name}</div>
+                    <div class="item-date">${item.category ? item.category.name : 'Unknown'} | ${this.formatDate(item.dateAdded)}</div>
+                    <span class="days-remaining ${urgencyClass}">${daysText}</span>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    getUrgencyClass(daysLeft) {
+        if (daysLeft <= 0) return 'ended';
+        if (daysLeft <= 3) return 'danger';
+        if (daysLeft <= 7) return 'warning';
+        return 'normal';
     }
 
     // Utility Functions
@@ -457,59 +660,164 @@ class EbayListingLife {
         document.getElementById('categoryModal').style.display = 'none';
         document.getElementById('itemModal').style.display = 'none';
         document.getElementById('itemDetailModal').style.display = 'none';
+        document.getElementById('viewModal').style.display = 'none';
         this.currentEditingCategory = null;
         this.currentEditingItem = null;
         this.currentDetailItem = null;
     }
 
-    closeItemDetailModal() {
-        document.getElementById('itemDetailModal').style.display = 'none';
-        this.currentDetailItem = null;
+    closeAllModalsExcept(excludeModalId) {
+        const allModals = ['categoryModal', 'itemModal', 'itemDetailModal', 'viewModal'];
+        allModals.forEach(modalId => {
+            if (modalId !== excludeModalId) {
+                const modal = document.getElementById(modalId);
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+            }
+        });
+    }
+
+    // Simple View Modal Management
+    openViewModal(itemId) {
+        console.log('=== OPENING VIEW MODAL ===');
+        console.log('Item ID:', itemId);
+        console.log('Available items:', this.items);
+        
+        // First, close all other modals to prevent conflicts
+        this.closeAllModalsExcept('viewModal');
+        
+        const item = this.items.find(i => i.id === itemId);
+        console.log('Found item:', item);
+        
+        if (!item) {
+            console.error('Item not found with ID:', itemId);
+            alert('Item not found!');
+            return;
+        }
+        
+        const category = this.categories.find(cat => cat.id === item.categoryId);
+        console.log('Found category:', category);
+        
+        const modal = document.getElementById('viewModal');
+        console.log('Modal element:', modal);
+        
+        if (!modal) {
+            console.error('View modal not found in DOM');
+            alert('View modal not found!');
+            return;
+        }
+        
+        // Populate the view modal
+        console.log('Populating modal fields...');
+        document.getElementById('viewName').textContent = item.name;
+        document.getElementById('viewCategory').textContent = category ? category.name : 'Unknown';
+        document.getElementById('viewDescription').textContent = item.description || '';
+        document.getElementById('viewNote').textContent = item.note || '';
+        document.getElementById('viewDateAdded').textContent = item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown';
+        
+        // Handle photo display
+        const viewImage = document.getElementById('viewImage');
+        const viewNoPhoto = document.getElementById('viewNoPhoto');
+        
+        console.log('Item photo:', item.photo);
+        
+        if (item.photo && item.photo.trim()) {
+            console.log('Setting up photo display');
+            viewImage.src = item.photo;
+            viewImage.style.display = 'block';
+            viewNoPhoto.style.display = 'none';
+            
+            // Handle image load errors
+            viewImage.onerror = () => {
+                console.log('Image failed to load, showing placeholder');
+                viewImage.style.display = 'none';
+                viewNoPhoto.style.display = 'block';
+            };
+        } else {
+            console.log('No photo available, showing placeholder');
+            viewImage.style.display = 'none';
+            viewNoPhoto.style.display = 'block';
+        }
+        
+        // Show the modal
+        console.log('Showing modal...');
+        modal.style.display = 'block';
+        
+        console.log('=== VIEW MODAL SHOULD NOW BE VISIBLE ===');
+    }
+    
+    closeViewModal() {
+        console.log('=== CLOSING VIEW MODAL ===');
+        const modal = document.getElementById('viewModal');
+        if (modal) {
+            console.log('Closing view modal');
+            modal.style.display = 'none';
+        } else {
+            console.error('View modal not found');
+        }
     }
 
     // Item Detail Management
     openItemDetailModal(itemId) {
-        console.log('Opening item detail modal for item ID:', itemId); // Debug log
+        console.log('openItemDetailModal called with itemId:', itemId);
+        console.log('Available items:', this.items);
+        
+        // Close all other modals first
+        this.closeAllModalsExcept('itemDetailModal');
+        
         const item = this.items.find(i => i.id === itemId);
+        console.log('Found item:', item);
+        
         if (!item) {
             console.error('Item not found with ID:', itemId);
+            alert('Item not found! Please try again.');
             return;
         }
         
         this.currentDetailItem = item;
         const modal = document.getElementById('itemDetailModal');
+        console.log('Modal element:', modal);
+        
+        if (!modal) {
+            console.error('Modal element not found');
+            return;
+        }
+        
         const category = this.categories.find(cat => cat.id === item.categoryId);
         
         // Populate form fields
         document.getElementById('itemDetailName').value = item.name;
         document.getElementById('itemDetailCategory').value = category ? category.name : 'Unknown';
-        document.getElementById('itemDetailRemovalDate').value = this.formatDate(item.removalDate);
-        document.getElementById('itemDetailNotes').value = item.notes || '';
-        document.getElementById('itemDetailPicture').value = item.picture || '';
+        document.getElementById('itemDetailDescription').value = item.description || '';
+        document.getElementById('itemDetailNote').value = item.note || '';
+        document.getElementById('itemDetailDateAdded').value = item.dateAdded ? this.formatDate(item.dateAdded) : '';
+        document.getElementById('itemDetailPicture').value = item.photo || '';
         
         // Clear file input
         document.getElementById('itemDetailPictureFile').value = '';
         
         // Show picture preview if exists
-        if (item.picture) {
-            this.previewPicture(item.picture);
+        if (item.photo) {
+            this.previewPicture(item.photo);
         } else {
             document.getElementById('itemPicturePreview').style.display = 'none';
         }
         
         modal.style.display = 'block';
+        console.log('Modal should now be visible');
     }
 
     handleItemDetailSubmit(e) {
         e.preventDefault();
         if (!this.currentDetailItem) return;
 
-        const notes = document.getElementById('itemDetailNotes').value.trim();
+        const note = document.getElementById('itemDetailNote').value.trim();
         const picture = document.getElementById('itemDetailPicture').value.trim();
 
         // Update item with new data
-        this.currentDetailItem.notes = notes;
-        this.currentDetailItem.picture = picture;
+        this.currentDetailItem.note = note;
+        this.currentDetailItem.photo = picture;
 
         this.saveData();
         this.renderCategories();
@@ -549,6 +857,23 @@ class EbayListingLife {
         }
     }
 
+    previewPictureNew(url) {
+        const preview = document.getElementById('itemPhotoPreview');
+        const img = document.getElementById('previewImageNew');
+        
+        if (url && this.isValidUrl(url)) {
+            img.src = url;
+            img.onload = () => {
+                preview.style.display = 'block';
+            };
+            img.onerror = () => {
+                preview.style.display = 'none';
+            };
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+
     handleFileUpload(event) {
         const file = event.target.files[0];
         if (file) {
@@ -556,8 +881,14 @@ class EbayListingLife {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const dataUrl = e.target.result;
-                document.getElementById('itemDetailPicture').value = dataUrl;
-                this.previewPicture(dataUrl);
+                // Check which modal we're in based on the file input ID
+                if (event.target.id === 'itemPhotoFile') {
+                    document.getElementById('itemPhoto').value = dataUrl;
+                    this.previewPictureNew(dataUrl);
+                } else {
+                    document.getElementById('itemDetailPicture').value = dataUrl;
+                    this.previewPicture(dataUrl);
+                }
             };
             reader.readAsDataURL(file);
         }
@@ -600,14 +931,12 @@ class EbayListingLife {
         const fragileCategory = {
             id: '1',
             name: 'Fragile Items',
-            duration: 30,
             createdAt: new Date().toISOString()
         };
         
         const cameraCategory = {
             id: '2',
             name: 'Cameras and Things',
-            duration: 45,
             createdAt: new Date().toISOString()
         };
 
@@ -620,14 +949,22 @@ class EbayListingLife {
                 id: '1',
                 categoryId: '1',
                 name: 'Big Glass thing',
-                removalDate: new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 5 days (urgent)
+                description: 'A large decorative glass vase with intricate patterns',
+                note: 'Handle with care - very fragile',
+                dateAdded: new Date(today.getTime() - 25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 25 days ago
+                duration: 30, // Will end in 5 days
+                photo: '',
                 createdAt: new Date().toISOString()
             },
             {
                 id: '2',
                 categoryId: '1',
                 name: 'Another glass thing',
-                removalDate: new Date(today.getTime() + 25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 25 days
+                description: 'Small glass figurine, perfect for collectors',
+                note: 'Minor chip on the base',
+                dateAdded: new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 5 days ago
+                duration: 14, // Will end in 9 days
+                photo: '',
                 createdAt: new Date().toISOString()
             }
         ];
@@ -637,14 +974,44 @@ class EbayListingLife {
                 id: '3',
                 categoryId: '2',
                 name: 'Camera',
-                removalDate: new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 3 days (urgent)
+                description: 'Professional DSLR camera with lens kit',
+                note: 'Excellent condition, barely used',
+                dateAdded: new Date(today.getTime() - 40 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 40 days ago
+                duration: 45, // Will end in 5 days
+                photo: '',
                 createdAt: new Date().toISOString()
             },
             {
                 id: '4',
                 categoryId: '2',
                 name: 'Camera 2',
-                removalDate: new Date(today.getTime() + 50 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 50 days
+                description: 'Compact digital camera for everyday use',
+                note: 'Includes memory card and case',
+                dateAdded: new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days ago
+                duration: 30, // Will end in 23 days
+                photo: '',
+                createdAt: new Date().toISOString()
+            },
+            {
+                id: '5',
+                categoryId: '2',
+                name: 'Vintage Lens',
+                description: 'Rare vintage camera lens from the 1970s',
+                note: 'Perfect condition, no scratches',
+                dateAdded: new Date(today.getTime() - 42 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 42 days ago
+                duration: 45, // Will end in 3 days
+                photo: '',
+                createdAt: new Date().toISOString()
+            },
+            {
+                id: '6',
+                categoryId: '2',
+                name: 'Old Camera',
+                description: 'Vintage film camera from the 1980s',
+                note: 'Needs new battery',
+                dateAdded: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
+                duration: 30, // Ended today (0 days left)
+                photo: '',
                 createdAt: new Date().toISOString()
             }
         ];
@@ -661,19 +1028,13 @@ const app = new EbayListingLife();
 window.app = app;
 
 // Create global functions for onclick handlers
-window.openItemDetail = function(itemId) {
-    console.log('Global function called with itemId:', itemId);
-    app.openItemDetailModal(itemId);
-};
-
-window.openItemEdit = function(item) {
-    console.log('Global function called with item:', item);
-    app.openItemModal(item);
-};
-
-window.deleteItem = function(itemId) {
-    console.log('Global function called to delete itemId:', itemId);
-    app.deleteItem(itemId);
+window.closeViewModal = function() {
+    console.log('Global closeViewModal called');
+    if (window.app && window.app.closeViewModal) {
+        window.app.closeViewModal();
+    } else {
+        console.error('App or closeViewModal method not found');
+    }
 };
 
 console.log('App initialized and available globally:', window.app);
