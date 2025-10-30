@@ -226,7 +226,14 @@ class EbayListingLife {
             document.getElementById('itemDescription').value = item.description || '';
             document.getElementById('itemNote').value = item.note || '';
             document.getElementById('itemDateAdded').value = item.dateAdded || '';
-            document.getElementById('itemDuration').value = item.duration || '';
+            // Compute end date from dateAdded + duration
+            if (item.dateAdded && item.duration) {
+                const addedDate = new Date(item.dateAdded);
+                const endDate = new Date(addedDate.getTime() + (item.duration * 24 * 60 * 60 * 1000));
+                document.getElementById('itemEndDate').value = endDate.toISOString().split('T')[0];
+            } else {
+                document.getElementById('itemEndDate').value = '';
+            }
             document.getElementById('itemPhoto').value = item.photo || '';
             
             // Show photo preview if exists
@@ -240,7 +247,11 @@ class EbayListingLife {
             form.reset();
             document.getElementById('itemPhotoPreview').style.display = 'none';
             // Set default date to today
-            document.getElementById('itemDateAdded').value = new Date().toISOString().split('T')[0];
+            const todayYmd = new Date().toISOString().split('T')[0];
+            document.getElementById('itemDateAdded').value = todayYmd;
+            // Default end date to 30 days from date added
+            const defaultEnd = new Date(new Date(todayYmd).getTime() + (30 * 24 * 60 * 60 * 1000));
+            document.getElementById('itemEndDate').value = defaultEnd.toISOString().split('T')[0];
         }
         
         modal.style.display = 'block';
@@ -253,10 +264,20 @@ class EbayListingLife {
         const description = document.getElementById('itemDescription').value.trim();
         const note = document.getElementById('itemNote').value.trim();
         const dateAdded = document.getElementById('itemDateAdded').value;
-        const duration = parseInt(document.getElementById('itemDuration').value);
+        const endDateStr = document.getElementById('itemEndDate').value;
         const photo = document.getElementById('itemPhoto').value.trim();
 
-        if (!categoryId || !name || !dateAdded || !duration) return;
+        if (!categoryId || !name || !dateAdded || !endDateStr) return;
+        // Compute duration as days between dateAdded and endDate (ceil), minimum 1
+        const start = new Date(dateAdded);
+        const end = new Date(endDateStr);
+        const diffMs = end - start;
+        if (isNaN(diffMs) || diffMs < 0) {
+            alert('End date must be the same as or after the date added.');
+            return;
+        }
+        let duration = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        duration = Math.max(duration, 1);
 
         if (this.currentEditingItem) {
             // Edit existing item
@@ -662,7 +683,9 @@ class EbayListingLife {
         const select = document.getElementById('itemCategory');
         select.innerHTML = '<option value="">Select Category</option>';
         
-        this.categories.forEach(category => {
+        // Sort categories A–Z by name (case-insensitive)
+        const sorted = [...this.categories].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        sorted.forEach(category => {
             const option = document.createElement('option');
             option.value = category.id;
             option.textContent = category.name;

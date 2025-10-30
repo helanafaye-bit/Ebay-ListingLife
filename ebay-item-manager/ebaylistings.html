@@ -97,27 +97,27 @@
                 <span class="close">&times;</span>
                 <h2 id="itemModalTitle">Add New Item</h2>
                 <form id="itemForm">
-                    <label for="itemCategory">A - Select Category</label>
+                    <label for="itemCategory">Select Category</label>
                     <select id="itemCategory" required>
                         <option value="">Select Category</option>
                     </select>
                     
-                    <label for="itemName">B - Item Name</label>
+                    <label for="itemName">Item Name</label>
                     <input type="text" id="itemName" placeholder="Item name (e.g., Big Glass thing)" required>
                     
-                    <label for="itemDescription">C - Description of the item</label>
+                    <label for="itemDescription">Description of the item</label>
                     <textarea id="itemDescription" placeholder="Enter detailed description of the item..." rows="3"></textarea>
                     
-                    <label for="itemNote">D - Note for the item</label>
+                    <label for="itemNote">Note for the item</label>
                     <textarea id="itemNote" placeholder="Add any additional notes about this item..." rows="2"></textarea>
                     
-                    <label for="itemDateAdded">E - Date added of the item</label>
+                    <label for="itemDateAdded">Date added of the item</label>
                     <input type="date" id="itemDateAdded" required>
                     
-                    <label for="itemDuration">F - Duration (days on listing)</label>
-                    <input type="number" id="itemDuration" placeholder="How many days to list this item" min="1" required>
+                    <label for="itemEndDate">End date</label>
+                    <input type="date" id="itemEndDate" required>
                     
-                    <label for="itemPhoto">G - A photo of the item</label>
+                    <label for="itemPhoto">A photo of the item</label>
                     <div class="picture-upload-section">
                         <input type="file" id="itemPhotoFile" accept="image/*" onchange="app.handleFileUpload(event)">
                         <div class="upload-or">OR</div>
