@@ -165,6 +165,7 @@ class EbayListingLife {
         if (category) {
             title.textContent = 'Edit Category';
             document.getElementById('categoryName').value = category.name;
+            document.getElementById('categoryDescription').value = category.description || '';
         } else {
             title.textContent = 'Add New Category';
             form.reset();
@@ -176,17 +177,23 @@ class EbayListingLife {
     handleCategorySubmit(e) {
         e.preventDefault();
         const name = document.getElementById('categoryName').value.trim();
+        const description = document.getElementById('categoryDescription').value.trim();
 
         if (!name) return;
 
         if (this.currentEditingCategory) {
-            // Edit existing category
-            this.currentEditingCategory.name = name;
+            // Edit existing category (ensure we update the stored instance)
+            const idx = this.categories.findIndex(cat => cat.id === this.currentEditingCategory.id);
+            if (idx !== -1) {
+                this.categories[idx].name = name;
+                this.categories[idx].description = description;
+            }
         } else {
             // Add new category
             const category = {
                 id: Date.now().toString(),
                 name: name,
+                description: description,
                 createdAt: new Date().toISOString()
             };
             this.categories.push(category);
@@ -565,6 +572,7 @@ class EbayListingLife {
                 <div class="category-box" onclick="app.showCategoryItems('${category.id}')">
                     <h3>${category.name}</h3>
                     <div class="item-count">${itemCount} item${itemCount !== 1 ? 's' : ''}</div>
+                    ${category.description ? `<div class="item-description">${category.description}</div>` : ''}
                     <div class="category-actions">
                         <button class="btn btn-small btn-primary" onclick="event.stopPropagation(); app.openCategoryModal(${JSON.stringify(category).replace(/"/g, '&quot;')})">Edit</button>
                         <button class="btn btn-small btn-danger" onclick="event.stopPropagation(); app.deleteCategory('${category.id}')">Delete</button>
@@ -1106,12 +1114,14 @@ class EbayListingLife {
         const fragileCategory = {
             id: '1',
             name: 'Fragile Items',
+            description: 'Delicate items that need careful handling',
             createdAt: new Date().toISOString()
         };
         
         const cameraCategory = {
             id: '2',
             name: 'Cameras and Things',
+            description: 'Cameras, lenses, and related accessories',
             createdAt: new Date().toISOString()
         };
 
