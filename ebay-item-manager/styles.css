@@ -162,12 +162,12 @@ header h1 {
 }
 
 .btn-primary {
-    background: #86b817;
+    background: #0064d3;
     color: white;
 }
 
 .btn-primary:hover {
-    background: #7aa315;
+    background: #0056b8;
     transform: translateY(-2px);
 }
 
@@ -182,14 +182,14 @@ header h1 {
 }
 
 .btn-danger {
-    background: #e53238;
+    background: #0064d3;
     color: white;
     padding: 8px 16px;
     font-size: 14px;
 }
 
 .btn-danger:hover {
-    background: #d12a30;
+    background: #0056b8;
 }
 
 .btn-warning {
