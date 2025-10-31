@@ -119,12 +119,8 @@
                     <label for="itemEndDate">End date</label>
                     <input type="date" id="itemEndDate" required>
                     
-                    <label for="itemPhoto">A photo of the item</label>
-                    <div class="picture-upload-section">
-                        <input type="file" id="itemPhotoFile" accept="image/*" onchange="app.handleFileUpload(event)">
-                        <div class="upload-or">OR</div>
-                        <input type="url" id="itemPhoto" placeholder="https://example.com/image.jpg">
-                    </div>
+                    <label for="itemPhoto">Image URL</label>
+                    <input type="url" id="itemPhoto" placeholder="Paste image URL (e.g., from eBay listing or Google Images)" oninput="app.previewPictureNew(this.value)">
                     
                     <div id="itemPhotoPreview" class="picture-preview" style="display: none;">
                         <img id="previewImageNew" src="" alt="Item preview">
@@ -156,12 +152,8 @@
                     <label for="itemDetailDateAdded">Date Added</label>
                     <input type="text" id="itemDetailDateAdded" readonly>
                     
-                    <label for="itemDetailPicture">Picture</label>
-                    <div class="picture-upload-section">
-                        <input type="file" id="itemDetailPictureFile" accept="image/*" onchange="app.handleFileUpload(event)">
-                        <div class="upload-or">OR</div>
-                        <input type="url" id="itemDetailPicture" placeholder="https://example.com/image.jpg">
-                    </div>
+                    <label for="itemDetailPicture">Picture URL</label>
+                    <input type="url" id="itemDetailPicture" placeholder="Paste image URL (e.g., from eBay listing or Google Images)" oninput="app.previewPicture(this.value)">
                     
                     <div id="itemPicturePreview" class="picture-preview" style="display: none;">
                         <img id="previewImage" src="" alt="Item preview">

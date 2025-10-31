@@ -61,9 +61,6 @@ class EbayListingLife {
         document.getElementById('categoryForm').addEventListener('submit', (e) => this.handleCategorySubmit(e));
         document.getElementById('itemForm').addEventListener('submit', (e) => this.handleItemSubmit(e));
         document.getElementById('itemDetailForm').addEventListener('submit', (e) => this.handleItemDetailSubmit(e));
-        
-        // Picture URL preview
-        document.getElementById('itemDetailPicture').addEventListener('input', (e) => this.previewPicture(e.target.value));
 
         // Close modals
         document.querySelectorAll('.close').forEach(closeBtn => {
@@ -179,7 +176,10 @@ class EbayListingLife {
         const name = document.getElementById('categoryName').value.trim();
         const description = document.getElementById('categoryDescription').value.trim();
 
-        if (!name) return;
+        if (!name) {
+            alert('Please enter a category name.');
+            return;
+        }
 
         if (this.currentEditingCategory) {
             // Edit existing category (ensure we update the stored instance)
@@ -199,7 +199,14 @@ class EbayListingLife {
             this.categories.push(category);
         }
 
-        this.saveData();
+        try {
+            this.saveData();
+        } catch (error) {
+            console.error('Error saving category:', error);
+            alert('Error saving category: ' + error.message);
+            return;
+        }
+        
         this.renderCategories();
         this.updateCategorySelect();
         this.closeModals();
@@ -209,7 +216,13 @@ class EbayListingLife {
         if (confirm('Are you sure you want to delete this category? All items in this category will also be deleted.')) {
             this.categories = this.categories.filter(cat => cat.id !== categoryId);
             this.items = this.items.filter(item => item.categoryId !== categoryId);
-            this.saveData();
+            try {
+                this.saveData();
+            } catch (error) {
+                console.error('Error saving after category deletion:', error);
+                alert('Error saving changes: ' + error.message);
+                return;
+            }
             this.renderCategories();
             this.updateCategorySelect();
             this.updateUrgentItems();
@@ -274,7 +287,24 @@ class EbayListingLife {
         const endDateStr = document.getElementById('itemEndDate').value;
         const photo = document.getElementById('itemPhoto').value.trim();
 
-        if (!categoryId || !name || !dateAdded || !endDateStr) return;
+        // Validate required fields with user feedback
+        if (!categoryId) {
+            alert('Please select a category.');
+            return;
+        }
+        if (!name) {
+            alert('Please enter an item name.');
+            return;
+        }
+        if (!dateAdded) {
+            alert('Please select a date added.');
+            return;
+        }
+        if (!endDateStr) {
+            alert('Please select an end date.');
+            return;
+        }
+        
         // Compute duration as days between dateAdded and endDate (ceil), minimum 1
         const start = new Date(dateAdded);
         const end = new Date(endDateStr);
@@ -285,6 +315,7 @@ class EbayListingLife {
         }
         let duration = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
         duration = Math.max(duration, 1);
+        
 
         if (this.currentEditingItem) {
             // Edit existing item
@@ -322,7 +353,20 @@ class EbayListingLife {
             this.items.push(item);
         }
 
-        this.saveData();
+        // Save data with error handling
+        try {
+            this.saveData();
+        } catch (error) {
+            console.error('Error saving data:', error);
+            if (error.name === 'QuotaExceededError' || error.code === 22) {
+                alert('Storage quota exceeded! The app cannot save more data. Try removing some items with photos or use smaller photos (URLs instead of file uploads).');
+                return;
+            } else {
+                alert('Error saving item: ' + error.message);
+                return;
+            }
+        }
+        
         this.renderCategories();
         this.updateUrgentItems();
         
@@ -342,7 +386,13 @@ class EbayListingLife {
     deleteItem(itemId) {
         if (confirm('Are you sure you want to delete this item?')) {
             this.items = this.items.filter(item => item.id !== itemId);
-            this.saveData();
+            try {
+                this.saveData();
+            } catch (error) {
+                console.error('Error saving after item deletion:', error);
+                alert('Error saving changes: ' + error.message);
+                return;
+            }
             this.renderCategories();
             this.updateUrgentItems();
             
@@ -374,7 +424,14 @@ class EbayListingLife {
             item.manuallyEnded = true;
             item.endedDate = new Date().toISOString().split('T')[0];
             
-            this.saveData();
+            try {
+                this.saveData();
+            } catch (error) {
+                console.error('Error saving after ending item:', error);
+                alert('Error saving changes: ' + error.message);
+                return;
+            }
+            
             this.renderCategories();
             this.updateUrgentItems();
             
@@ -972,9 +1029,6 @@ class EbayListingLife {
         document.getElementById('itemDetailDateAdded').value = item.dateAdded ? this.formatDate(item.dateAdded) : '';
         document.getElementById('itemDetailPicture').value = item.photo || '';
         
-        // Clear file input
-        document.getElementById('itemDetailPictureFile').value = '';
-        
         // Show picture preview if exists
         if (item.photo) {
             this.previewPicture(item.photo);
@@ -993,11 +1047,19 @@ class EbayListingLife {
         const note = document.getElementById('itemDetailNote').value.trim();
         const picture = document.getElementById('itemDetailPicture').value.trim();
 
+
         // Update item with new data
         this.currentDetailItem.note = note;
         this.currentDetailItem.photo = picture;
 
-        this.saveData();
+        try {
+            this.saveData();
+        } catch (error) {
+            console.error('Error saving item details:', error);
+            alert('Error saving changes: ' + error.message);
+            return;
+        }
+        
         this.renderCategories();
         this.updateUrgentItems();
         
@@ -1018,14 +1080,19 @@ class EbayListingLife {
         const preview = document.getElementById('itemPicturePreview');
         const img = document.getElementById('previewImage');
         
-        if (url && this.isValidUrl(url)) {
-            img.src = url;
-            img.onload = () => {
-                preview.style.display = 'block';
-            };
-            img.onerror = () => {
+        if (url && url.trim()) {
+            // Check if it's a valid URL format or data URL
+            if (this.isValidUrl(url) || url.startsWith('data:image')) {
+                img.src = url;
+                img.onload = () => {
+                    preview.style.display = 'block';
+                };
+                img.onerror = () => {
+                    preview.style.display = 'none';
+                };
+            } else {
                 preview.style.display = 'none';
-            };
+            }
         } else {
             preview.style.display = 'none';
         }
@@ -1033,9 +1100,14 @@ class EbayListingLife {
 
     isValidUrl(string) {
         try {
+            // Try to create a URL object - works for http, https, and other protocols
             new URL(string);
             return true;
         } catch (_) {
+            // Also accept relative URLs that start with / or just image file names
+            if (string.startsWith('/') || string.startsWith('./') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(string)) {
+                return true;
+            }
             return false;
         }
     }
@@ -1044,38 +1116,24 @@ class EbayListingLife {
         const preview = document.getElementById('itemPhotoPreview');
         const img = document.getElementById('previewImageNew');
         
-        if (url && this.isValidUrl(url)) {
-            img.src = url;
-            img.onload = () => {
-                preview.style.display = 'block';
-            };
-            img.onerror = () => {
+        if (url && url.trim()) {
+            // Check if it's a valid URL format or data URL
+            if (this.isValidUrl(url) || url.startsWith('data:image')) {
+                img.src = url;
+                img.onload = () => {
+                    preview.style.display = 'block';
+                };
+                img.onerror = () => {
+                    preview.style.display = 'none';
+                };
+            } else {
                 preview.style.display = 'none';
-            };
+            }
         } else {
             preview.style.display = 'none';
         }
     }
 
-    handleFileUpload(event) {
-        const file = event.target.files[0];
-        if (file) {
-            // Convert file to data URL for preview and storage
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const dataUrl = e.target.result;
-                // Check which modal we're in based on the file input ID
-                if (event.target.id === 'itemPhotoFile') {
-                    document.getElementById('itemPhoto').value = dataUrl;
-                    this.previewPictureNew(dataUrl);
-                } else {
-                    document.getElementById('itemDetailPicture').value = dataUrl;
-                    this.previewPicture(dataUrl);
-                }
-            };
-            reader.readAsDataURL(file);
-        }
-    }
 
     // Data Persistence
     saveData() {
@@ -1083,7 +1141,33 @@ class EbayListingLife {
             categories: this.categories,
             items: this.items
         };
-        localStorage.setItem('EbayListingLife', JSON.stringify(data));
+        
+        try {
+            const jsonString = JSON.stringify(data);
+            const dataSizeKB = (jsonString.length * 2) / 1024; // Approximate size in KB (UTF-16)
+            
+            // Attempt to save - browser will throw QuotaExceededError if limit reached
+            localStorage.setItem('EbayListingLife', jsonString);
+            console.log(`Data saved successfully. Size: ${Math.round(dataSizeKB)}KB`);
+        } catch (error) {
+            console.error('Error in saveData:', error);
+            // Re-throw with helpful message for quota errors
+            if (error.name === 'QuotaExceededError' || error.code === 22) {
+                const currentSizeKB = this.getLocalStorageSize();
+                throw new Error(`Storage quota exceeded! Current storage: ~${Math.round(currentSizeKB)}KB. Try removing items with large photos or use photo URLs instead of file uploads.`);
+            }
+            throw error; // Re-throw other errors
+        }
+    }
+    
+    getLocalStorageSize() {
+        let total = 0;
+        for (let key in localStorage) {
+            if (localStorage.hasOwnProperty(key)) {
+                total += localStorage[key].length + key.length;
+            }
+        }
+        return (total * 2) / 1024; // Convert to KB (UTF-16 encoding)
     }
 
     loadData() {
