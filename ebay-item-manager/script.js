@@ -266,6 +266,12 @@ class EbayListingLife {
             title.textContent = 'Add New Item';
             form.reset();
             document.getElementById('itemPhotoPreview').style.display = 'none';
+            
+            // If we're currently viewing a category, pre-select that category
+            if (this.currentView === 'items' && this.selectedCategoryId) {
+                document.getElementById('itemCategory').value = this.selectedCategoryId;
+            }
+            
             // Set default date to today
             const todayYmd = new Date().toISOString().split('T')[0];
             document.getElementById('itemDateAdded').value = todayYmd;
