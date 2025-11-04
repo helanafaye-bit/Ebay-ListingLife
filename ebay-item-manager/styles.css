@@ -306,13 +306,22 @@ header h1 {
     border-color: #adb5bd;
 }
 
-#categoryDurationInfo {
+.category-duration-display {
     background: #667eea;
     color: white;
     padding: 8px 16px;
     border-radius: 20px;
     font-size: 14px;
     font-weight: 600;
+}
+
+.category-duration-display span {
+    color: white;
+}
+
+.category-duration-display strong {
+    font-size: 16px;
+    font-weight: 700;
 }
 
 .items-list {

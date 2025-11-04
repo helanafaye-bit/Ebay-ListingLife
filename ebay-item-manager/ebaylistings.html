@@ -42,7 +42,9 @@
                                 </select>
                             </div>
                         </div>
-                        <div id="categoryDurationInfo"></div>
+                        <div id="categoryDurationInfo" class="category-duration-display">
+                            <span id="categoryAverageDisplay">Average: <strong id="categoryAverageValue">30</strong> days</span>
+                        </div>
                     </div>
                     <div id="categoryItemsList">
                         <!-- Items for selected category will be shown here -->
@@ -88,6 +90,8 @@
                     <input type="text" id="categoryName" placeholder="Category name (e.g., Fragile Items)" required>
                     <label for="categoryDescription">Description</label>
                     <textarea id="categoryDescription" placeholder="Describe this category..." rows="2"></textarea>
+                    <label for="categoryAverageDays">Average Days</label>
+                    <input type="number" id="categoryAverageDays" placeholder="Enter average days for this category" min="1" required>
                     <button type="submit" class="btn btn-primary">Save Category</button>
                 </form>
             </div>

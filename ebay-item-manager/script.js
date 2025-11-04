@@ -163,6 +163,7 @@ class EbayListingLife {
             title.textContent = 'Edit Category';
             document.getElementById('categoryName').value = category.name;
             document.getElementById('categoryDescription').value = category.description || '';
+            document.getElementById('categoryAverageDays').value = category.averageDays || '';
         } else {
             title.textContent = 'Add New Category';
             form.reset();
@@ -175,9 +176,15 @@ class EbayListingLife {
         e.preventDefault();
         const name = document.getElementById('categoryName').value.trim();
         const description = document.getElementById('categoryDescription').value.trim();
+        const averageDays = parseInt(document.getElementById('categoryAverageDays').value);
 
         if (!name) {
             alert('Please enter a category name.');
+            return;
+        }
+        
+        if (!averageDays || averageDays < 1) {
+            alert('Please enter a valid average days (minimum 1 day).');
             return;
         }
 
@@ -187,6 +194,7 @@ class EbayListingLife {
             if (idx !== -1) {
                 this.categories[idx].name = name;
                 this.categories[idx].description = description;
+                this.categories[idx].averageDays = averageDays;
             }
         } else {
             // Add new category
@@ -194,6 +202,7 @@ class EbayListingLife {
                 id: Date.now().toString(),
                 name: name,
                 description: description,
+                averageDays: averageDays,
                 createdAt: new Date().toISOString()
             };
             this.categories.push(category);
@@ -378,7 +387,13 @@ class EbayListingLife {
         
         // If we're viewing items for a category, refresh that view
         if (this.currentView === 'items' && this.selectedCategoryId) {
-            this.showCategoryItems(this.selectedCategoryId);
+            // Re-apply filtering based on category's average days
+            const category = this.categories.find(cat => cat.id === this.selectedCategoryId);
+            if (category && category.averageDays) {
+                this.filterCategoryItemsByAverage(category.averageDays);
+            } else {
+                this.showCategoryItems(this.selectedCategoryId);
+            }
         }
         
         // If we're viewing ended items, refresh that view
@@ -404,7 +419,13 @@ class EbayListingLife {
             
             // If we're viewing items for a category, refresh that view
             if (this.currentView === 'items' && this.selectedCategoryId) {
-                this.showCategoryItems(this.selectedCategoryId);
+                // Re-apply filtering based on category's average days
+                const category = this.categories.find(cat => cat.id === this.selectedCategoryId);
+                if (category && category.averageDays) {
+                    this.filterCategoryItemsByAverage(category.averageDays);
+                } else {
+                    this.showCategoryItems(this.selectedCategoryId);
+                }
             }
             
             // If we're viewing ended items, refresh that view
@@ -443,7 +464,13 @@ class EbayListingLife {
             
             // If we're viewing items for a category, refresh that view
             if (this.currentView === 'items' && this.selectedCategoryId) {
-                this.showCategoryItems(this.selectedCategoryId);
+                // Re-apply filtering based on category's average days
+                const category = this.categories.find(cat => cat.id === this.selectedCategoryId);
+                if (category && category.averageDays) {
+                    this.filterCategoryItemsByAverage(category.averageDays);
+                } else {
+                    this.showCategoryItems(this.selectedCategoryId);
+                }
             }
             
             // If we're viewing ended items, refresh that view
@@ -490,42 +517,94 @@ class EbayListingLife {
         // Reset sort dropdown to newest first
         document.getElementById('categorySortSelect').value = 'newest';
         
-        // Calculate average duration for this category
-        const avgDuration = categoryItems.length > 0 ? 
-            Math.round(categoryItems.reduce((sum, item) => sum + (item.duration || 30), 0) / categoryItems.length) : 
-            30;
+        // Get average days from category (required field, should always exist)
+        const avgDuration = category.averageDays || 30;
         
-        document.getElementById('categoryDurationInfo').textContent = `Average: ${avgDuration} days`;
+        // Display the average
+        document.getElementById('categoryAverageValue').textContent = avgDuration;
         
-        // Render items
-        this.renderCategoryItems(categoryItems);
+        // Filter items by the category's average days
+        this.filterCategoryItemsByAverage(avgDuration);
     }
 
     handleCategorySort(e) {
         const sortOrder = e.target.value;
+        const category = this.categories.find(cat => cat.id === this.selectedCategoryId);
         const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId && !item.manuallyEnded);
+        
+        // Filter by category's average days, then sort
+        let itemsToSort = categoryItems;
+        if (category && category.averageDays) {
+            const avgValue = category.averageDays;
+            itemsToSort = categoryItems.filter(item => {
+                const daysLeft = this.calculateDaysLeft(item);
+                return daysLeft >= 0 && Math.abs(daysLeft - avgValue) <= 2;
+            });
+        }
         
         // Sort items based on selection
         if (sortOrder === 'newest') {
-            categoryItems.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+            itemsToSort.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
         } else if (sortOrder === 'oldest') {
-            categoryItems.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+            itemsToSort.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
         } else if (sortOrder === 'lowest-days') {
-            categoryItems.sort((a, b) => {
+            itemsToSort.sort((a, b) => {
                 const aDaysLeft = this.calculateDaysLeft(a);
                 const bDaysLeft = this.calculateDaysLeft(b);
                 return aDaysLeft - bDaysLeft;
             });
         } else if (sortOrder === 'highest-days') {
-            categoryItems.sort((a, b) => {
+            itemsToSort.sort((a, b) => {
                 const aDaysLeft = this.calculateDaysLeft(a);
                 const bDaysLeft = this.calculateDaysLeft(b);
                 return bDaysLeft - aDaysLeft;
             });
         }
         
-        // Re-render items
-        this.renderCategoryItems(categoryItems);
+        // Re-render items (if no items match, show all items)
+        this.renderCategoryItems(itemsToSort.length > 0 || !category || !category.averageDays ? itemsToSort : categoryItems);
+    }
+    
+    filterCategoryItemsByAverage(averageDays) {
+        if (!this.selectedCategoryId) return;
+        
+        const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId && !item.manuallyEnded);
+        
+        // Filter items that have approximately the same days remaining as the average
+        // Allow a tolerance of ±2 days for flexibility
+        const filteredItems = categoryItems.filter(item => {
+            const daysLeft = this.calculateDaysLeft(item);
+            return daysLeft >= 0 && Math.abs(daysLeft - averageDays) <= 2;
+        });
+        
+        // If no items match exactly, show all items
+        if (filteredItems.length === 0) {
+            this.renderCategoryItems(categoryItems);
+        } else {
+            // Apply current sort order
+            const sortOrder = document.getElementById('categorySortSelect').value;
+            let sortedItems = [...filteredItems];
+            
+            if (sortOrder === 'newest') {
+                sortedItems.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+            } else if (sortOrder === 'oldest') {
+                sortedItems.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+            } else if (sortOrder === 'lowest-days') {
+                sortedItems.sort((a, b) => {
+                    const aDaysLeft = this.calculateDaysLeft(a);
+                    const bDaysLeft = this.calculateDaysLeft(b);
+                    return aDaysLeft - bDaysLeft;
+                });
+            } else if (sortOrder === 'highest-days') {
+                sortedItems.sort((a, b) => {
+                    const aDaysLeft = this.calculateDaysLeft(a);
+                    const bDaysLeft = this.calculateDaysLeft(b);
+                    return bDaysLeft - aDaysLeft;
+                });
+            }
+            
+            this.renderCategoryItems(sortedItems);
+        }
     }
 
     calculateDaysLeft(item) {
@@ -1071,7 +1150,13 @@ class EbayListingLife {
         
         // If we're viewing items for a category, refresh that view
         if (this.currentView === 'items' && this.selectedCategoryId) {
-            this.showCategoryItems(this.selectedCategoryId);
+            // Re-apply filtering based on category's average days
+            const category = this.categories.find(cat => cat.id === this.selectedCategoryId);
+            if (category && category.averageDays) {
+                this.filterCategoryItemsByAverage(category.averageDays);
+            } else {
+                this.showCategoryItems(this.selectedCategoryId);
+            }
         }
         
         // If we're viewing ended items, refresh that view
@@ -1205,6 +1290,7 @@ class EbayListingLife {
             id: '1',
             name: 'Fragile Items',
             description: 'Delicate items that need careful handling',
+            averageDays: 30,
             createdAt: new Date().toISOString()
         };
         
@@ -1212,6 +1298,7 @@ class EbayListingLife {
             id: '2',
             name: 'Cameras and Things',
             description: 'Cameras, lenses, and related accessories',
+            averageDays: 45,
             createdAt: new Date().toISOString()
         };
 
