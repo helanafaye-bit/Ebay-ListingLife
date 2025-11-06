@@ -52,8 +52,8 @@ header h1 {
 }
 
 #searchBar:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #0064d3;
+    box-shadow: 0 0 0 3px rgba(0, 100, 211, 0.1);
 }
 
 #searchBtn {
@@ -132,9 +132,9 @@ header h1 {
 }
 
 .toggle-btn.active {
-    background: #667eea;
+    background: #0064d3;
     color: white;
-    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 4px rgba(0, 100, 211, 0.3);
 }
 
 .toggle-btn:hover:not(.active) {
@@ -164,43 +164,75 @@ header h1 {
 .btn-primary {
     background: #0064d3;
     color: white;
+    border: 1px solid #0064d3;
 }
 
 .btn-primary:hover {
     background: #0056b8;
+    border-color: #0056b8;
     transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 100, 211, 0.3);
+}
+
+.btn-primary:active {
+    background: #004a9f;
+    border-color: #004a9f;
 }
 
 .btn-secondary {
-    background: #0064d3;
-    color: white;
+    background: #f7f7f7;
+    color: #333333;
+    border: 1px solid #d1d1d1;
 }
 
 .btn-secondary:hover {
-    background: #0056b8;
+    background: #e6e6e6;
+    border-color: #b3b3b3;
     transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-secondary:active {
+    background: #d9d9d9;
+    border-color: #999999;
 }
 
 .btn-danger {
-    background: #0064d3;
+    background: #e53238;
     color: white;
+    border: 1px solid #e53238;
     padding: 8px 16px;
     font-size: 14px;
 }
 
 .btn-danger:hover {
-    background: #0056b8;
+    background: #cc0000;
+    border-color: #cc0000;
+    box-shadow: 0 4px 8px rgba(229, 50, 56, 0.3);
+}
+
+.btn-danger:active {
+    background: #b30000;
+    border-color: #b30000;
 }
 
 .btn-warning {
-    background: #f39c12;
+    background: #ff6b00;
     color: white;
+    border: 1px solid #ff6b00;
     padding: 8px 16px;
     font-size: 14px;
 }
 
 .btn-warning:hover {
-    background: #e67e22;
+    background: #e55a00;
+    border-color: #e55a00;
+    box-shadow: 0 4px 8px rgba(255, 107, 0, 0.3);
+}
+
+.btn-warning:active {
+    background: #cc4f00;
+    border-color: #cc4f00;
 }
 
 .btn-small {
@@ -229,8 +261,8 @@ header h1 {
 
 .category-box:hover {
     transform: translateY(-5px);
-    border-color: #667eea;
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+    border-color: #0064d3;
+    box-shadow: 0 10px 30px rgba(0, 100, 211, 0.2);
 }
 
 .category-box::before {
@@ -240,7 +272,7 @@ header h1 {
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #667eea, #764ba2);
+    background: linear-gradient(90deg, #0064d3, #0056b8);
 }
 
 .category-box h3 {
@@ -299,7 +331,7 @@ header h1 {
 }
 
 .sort-dropdown select:focus {
-    border-color: #667eea;
+    border-color: #0064d3;
 }
 
 .sort-dropdown select:hover {
@@ -307,7 +339,7 @@ header h1 {
 }
 
 .category-duration-display {
-    background: #667eea;
+    background: #0064d3;
     color: white;
     padding: 8px 16px;
     border-radius: 20px;
@@ -337,7 +369,7 @@ header h1 {
     justify-content: space-between;
     align-items: center;
     transition: all 0.3s ease;
-    border-left: 4px solid #667eea;
+    border-left: 4px solid #0064d3;
     gap: 15px;
 }
 
@@ -406,10 +438,10 @@ header h1 {
     font-size: 13px;
     font-style: italic;
     margin-top: 5px;
-    background: rgba(102, 126, 234, 0.1);
+    background: rgba(0, 100, 211, 0.1);
     padding: 4px 8px;
     border-radius: 4px;
-    border-left: 3px solid #667eea;
+    border-left: 3px solid #0064d3;
 }
 
 .item-days-left {
@@ -632,7 +664,7 @@ header h1 {
 .modal input:focus,
 .modal select:focus,
 .modal textarea:focus {
-    border-color: #667eea;
+    border-color: #0064d3;
 }
 
 .modal textarea {
@@ -767,7 +799,7 @@ header h1 {
     background: #f8f9fa;
     padding: 10px;
     border-radius: 6px;
-    border-left: 3px solid #667eea;
+    border-left: 3px solid #0064d3;
     min-height: 40px;
 }
 
@@ -783,8 +815,8 @@ header h1 {
 }
 
 .item-clickable:hover {
-    background: #e3f2fd !important;
-    border-left-color: #2196f3 !important;
+    background: #e6f2ff !important;
+    border-left-color: #0064d3 !important;
     transform: translateX(3px);
 }
 
