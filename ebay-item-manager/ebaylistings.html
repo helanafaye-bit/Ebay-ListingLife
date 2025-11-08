@@ -7,6 +7,13 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <nav class="sidebar-nav">
+        <div class="sidebar-buttons">
+            <button class="menu-btn menu-btn-active" data-nav-target="home">Home</button>
+            <button class="menu-btn" data-nav-target="ended">Items Ended</button>
+            <button class="menu-btn" data-nav-target="sold">Sold Items Trends</button>
+        </div>
+    </nav>
     <div class="container">
         <header>
             <h1>Ebay Listings</h1>
@@ -21,7 +28,6 @@
                 <div class="add-section">
                     <button id="addCategoryBtn" class="btn btn-primary">Add New Category</button>
                     <button id="addItemBtn" class="btn btn-secondary">Add New Item</button>
-                    <button id="itemsEndedBtn" class="btn btn-danger">Items Ended</button>
                 </div>
 
                 <div id="categoriesContainer">
@@ -45,6 +51,12 @@
                         <div id="categoryDurationInfo" class="category-duration-display">
                             <span id="categoryAverageDisplay">Average: <strong id="categoryAverageValue">30</strong> days</span>
                         </div>
+                    </div>
+                    <div class="floating-add-btn-wrapper">
+                        <button id="floatingAddItemBtn" type="button" class="btn btn-secondary floating-add-btn" aria-label="Add new item in this category">
+                            <span class="floating-add-icon">＋</span>
+                            <span>Add New Item</span>
+                        </button>
                     </div>
                     <div id="categoryItemsList">
                         <!-- Items for selected category will be shown here -->
@@ -122,6 +134,7 @@
                     
                     <label for="itemEndDate">End date</label>
                     <input type="date" id="itemEndDate" required>
+                    <div id="endDateSuggestion" class="field-hint" style="display: none;"></div>
                     
                     <label for="itemPhoto">Image URL</label>
                     <input type="url" id="itemPhoto" placeholder="Paste image URL (e.g., from eBay listing or Google Images)" oninput="app.previewPictureNew(this.value)">
@@ -211,6 +224,13 @@
                     <button type="button" class="btn btn-secondary" onclick="closeViewModal()">Close</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="appNotification" class="app-notification" role="alert" aria-live="assertive" aria-hidden="true">
+        <div class="notification-content">
+            <span id="appNotificationMessage"></span>
+            <button id="appNotificationClose" class="notification-close" aria-label="Close notification">&times;</button>
         </div>
     </div>
 

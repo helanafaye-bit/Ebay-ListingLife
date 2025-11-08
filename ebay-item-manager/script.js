@@ -10,6 +10,8 @@ class EbayListingLife {
         this.selectedCategoryId = null;
         this.currentDetailItem = null;
         this.sidebarMode = 'recent'; // 'recent' or 'ending'
+        this.notificationTimeout = null;
+        this.floatingAddBtn = null;
         
         this.init();
     }
@@ -49,6 +51,20 @@ class EbayListingLife {
         document.getElementById('addCategoryBtn').addEventListener('click', () => this.openCategoryModal());
         document.getElementById('addItemBtn').addEventListener('click', () => this.openItemModal());
         document.getElementById('itemsEndedBtn').addEventListener('click', () => this.showEndedItemsView());
+        document.querySelectorAll('.menu-btn[data-nav-target]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = btn.dataset.navTarget;
+                if (target === 'home') {
+                    e.preventDefault();
+                    this.showCategoriesView();
+                } else if (target === 'ended') {
+                    e.preventDefault();
+                    this.showEndedItemsView();
+                } else if (target === 'sold') {
+                    window.location.href = 'sold-items-trends.html';
+                }
+            });
+        });
 
         // Sidebar toggle buttons
         document.getElementById('recentToggle').addEventListener('click', () => this.setSidebarMode('recent'));
@@ -61,6 +77,60 @@ class EbayListingLife {
         document.getElementById('categoryForm').addEventListener('submit', (e) => this.handleCategorySubmit(e));
         document.getElementById('itemForm').addEventListener('submit', (e) => this.handleItemSubmit(e));
         document.getElementById('itemDetailForm').addEventListener('submit', (e) => this.handleItemDetailSubmit(e));
+        
+        const itemNameInput = document.getElementById('itemName');
+        if (itemNameInput) {
+            itemNameInput.addEventListener('paste', () => {
+                setTimeout(() => {
+                    const pastedName = itemNameInput.value.trim();
+                    if (!pastedName) return;
+                    
+                    const ignoreId = this.currentEditingItem ? this.currentEditingItem.id : null;
+                    if (this.isDuplicateItemName(pastedName, ignoreId)) {
+                        this.showNotification('This listing already exists');
+                    }
+                }, 0);
+            });
+        }
+        
+        const itemCategorySelect = document.getElementById('itemCategory');
+        if (itemCategorySelect) {
+            itemCategorySelect.addEventListener('change', (e) => this.handleItemCategoryChange(e));
+        }
+        
+        const itemDateAddedInput = document.getElementById('itemDateAdded');
+        if (itemDateAddedInput) {
+            itemDateAddedInput.addEventListener('change', () => this.handleItemDateAddedChange());
+        }
+        
+        const itemEndDateInput = document.getElementById('itemEndDate');
+        if (itemEndDateInput) {
+            itemEndDateInput.addEventListener('focus', () => this.handleEndDateFocus());
+            itemEndDateInput.addEventListener('input', () => this.handleEndDateInput());
+        }
+        
+        this.floatingAddBtn = document.getElementById('floatingAddItemBtn');
+        if (this.floatingAddBtn) {
+            this.floatingAddBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.openItemModal();
+            });
+            this.setFloatingAddButtonVisibility(false);
+        }
+        
+        const notificationClose = document.getElementById('appNotificationClose');
+        if (notificationClose) {
+            notificationClose.addEventListener('click', () => this.hideNotification());
+        }
+        
+        const notificationOverlay = document.getElementById('appNotification');
+        if (notificationOverlay) {
+            notificationOverlay.addEventListener('click', (e) => {
+                if (e.target === notificationOverlay) {
+                    this.hideNotification();
+                }
+            });
+        }
 
         // Close modals
         document.querySelectorAll('.close').forEach(closeBtn => {
@@ -247,23 +317,30 @@ class EbayListingLife {
         const modal = document.getElementById('itemModal');
         const title = document.getElementById('itemModalTitle');
         const form = document.getElementById('itemForm');
+        const categorySelect = document.getElementById('itemCategory');
+        const nameInput = document.getElementById('itemName');
+        const descriptionInput = document.getElementById('itemDescription');
+        const noteInput = document.getElementById('itemNote');
+        const dateAddedInput = document.getElementById('itemDateAdded');
+        const endDateInput = document.getElementById('itemEndDate');
+        const photoInput = document.getElementById('itemPhoto');
         
         if (item) {
             title.textContent = 'Edit Item';
-            document.getElementById('itemCategory').value = item.categoryId;
-            document.getElementById('itemName').value = item.name;
-            document.getElementById('itemDescription').value = item.description || '';
-            document.getElementById('itemNote').value = item.note || '';
-            document.getElementById('itemDateAdded').value = item.dateAdded || '';
+            categorySelect.value = item.categoryId;
+            nameInput.value = item.name;
+            descriptionInput.value = item.description || '';
+            noteInput.value = item.note || '';
+            dateAddedInput.value = item.dateAdded || '';
             // Compute end date from dateAdded + duration
             if (item.dateAdded && item.duration) {
                 const addedDate = new Date(item.dateAdded);
                 const endDate = new Date(addedDate.getTime() + (item.duration * 24 * 60 * 60 * 1000));
-                document.getElementById('itemEndDate').value = endDate.toISOString().split('T')[0];
+                endDateInput.value = endDate.toISOString().split('T')[0];
             } else {
-                document.getElementById('itemEndDate').value = '';
+                endDateInput.value = '';
             }
-            document.getElementById('itemPhoto').value = item.photo || '';
+            photoInput.value = item.photo || '';
             
             // Show photo preview if exists
             if (item.photo) {
@@ -278,16 +355,16 @@ class EbayListingLife {
             
             // If we're currently viewing a category, pre-select that category
             if (this.currentView === 'items' && this.selectedCategoryId) {
-                document.getElementById('itemCategory').value = this.selectedCategoryId;
+                categorySelect.value = this.selectedCategoryId;
             }
             
             // Set default date to today
             const todayYmd = new Date().toISOString().split('T')[0];
-            document.getElementById('itemDateAdded').value = todayYmd;
-            // Default end date to 30 days from date added
-            const defaultEnd = new Date(new Date(todayYmd).getTime() + (30 * 24 * 60 * 60 * 1000));
-            document.getElementById('itemEndDate').value = defaultEnd.toISOString().split('T')[0];
+            dateAddedInput.value = todayYmd;
+            endDateInput.value = '';
         }
+        
+        this.applySuggestedEndDate(categorySelect.value, { forceValue: !item });
         
         modal.style.display = 'block';
     }
@@ -301,6 +378,7 @@ class EbayListingLife {
         const dateAdded = document.getElementById('itemDateAdded').value;
         const endDateStr = document.getElementById('itemEndDate').value;
         const photo = document.getElementById('itemPhoto').value.trim();
+        const ignoreId = this.currentEditingItem ? this.currentEditingItem.id : null;
 
         // Validate required fields with user feedback
         if (!categoryId) {
@@ -317,6 +395,10 @@ class EbayListingLife {
         }
         if (!endDateStr) {
             alert('Please select an end date.');
+            return;
+        }
+        if (this.isDuplicateItemName(name, ignoreId)) {
+            this.showNotification('This listing already exists');
             return;
         }
         
@@ -419,6 +501,181 @@ class EbayListingLife {
         }
         
         this.closeModals();
+    }
+    
+    isDuplicateItemName(name, ignoreItemId = null) {
+        if (!name) return false;
+        const normalized = name.trim().toLowerCase();
+        if (!normalized) return false;
+        
+        return this.items.some(item => {
+            if (!item.name) return false;
+            const matches = item.name.trim().toLowerCase() === normalized;
+            const isSameItem = ignoreItemId && item.id === ignoreItemId;
+            return matches && !isSameItem;
+        });
+    }
+    
+    setFloatingAddButtonVisibility(show) {
+        if (!this.floatingAddBtn) {
+            this.floatingAddBtn = document.getElementById('floatingAddItemBtn');
+        }
+        if (!this.floatingAddBtn) return;
+        this.floatingAddBtn.classList.toggle('visible', !!show);
+    }
+    
+    showNotification(message, options = {}) {
+        const notification = document.getElementById('appNotification');
+        const messageEl = document.getElementById('appNotificationMessage');
+        if (!notification || !messageEl) {
+            alert(message);
+            return;
+        }
+        
+        messageEl.textContent = message;
+        notification.classList.add('visible');
+        notification.setAttribute('aria-hidden', 'false');
+        
+        if (this.notificationTimeout) {
+            clearTimeout(this.notificationTimeout);
+        }
+        
+        const duration = typeof options.duration === 'number' ? options.duration : 3000;
+        if (duration > 0) {
+            this.notificationTimeout = setTimeout(() => this.hideNotification(), duration);
+        }
+    }
+    
+    hideNotification() {
+        const notification = document.getElementById('appNotification');
+        if (!notification) return;
+        
+        notification.classList.remove('visible');
+        notification.setAttribute('aria-hidden', 'true');
+        
+        if (this.notificationTimeout) {
+            clearTimeout(this.notificationTimeout);
+            this.notificationTimeout = null;
+        }
+    }
+    
+    handleItemCategoryChange(e) {
+        const categoryId = e.target.value;
+        const shouldForce = !this.currentEditingItem;
+        this.applySuggestedEndDate(categoryId, { forceValue: shouldForce });
+    }
+    
+    handleItemDateAddedChange() {
+        const categoryId = document.getElementById('itemCategory').value;
+        const shouldForce = !this.currentEditingItem;
+        this.applySuggestedEndDate(categoryId, { forceValue: shouldForce });
+    }
+    
+    applySuggestedEndDate(categoryId, options = {}) {
+        const { forceValue = false } = options;
+        const startDateInput = document.getElementById('itemDateAdded');
+        const endDateInput = document.getElementById('itemEndDate');
+        if (!startDateInput || !endDateInput) return;
+        
+        const averageDays = this.getCategoryAverageDays(categoryId);
+        const category = this.categories.find(cat => cat.id === categoryId);
+        const startDate = startDateInput.value;
+        
+        if (!startDate) {
+            endDateInput.dataset.suggestedDate = '';
+            endDateInput.dataset.averageDays = averageDays;
+            endDateInput.dataset.categoryName = category ? category.name : '';
+            if (forceValue) {
+                endDateInput.value = '';
+            }
+            this.updateEndDateSuggestion('', averageDays, category ? category.name : null, startDate);
+            this.handleEndDateInput();
+            return;
+        }
+        
+        const suggestedEnd = this.getSuggestedEndDate(categoryId, startDate);
+        
+        endDateInput.dataset.suggestedDate = suggestedEnd || '';
+        endDateInput.dataset.averageDays = averageDays;
+        endDateInput.dataset.categoryName = category ? category.name : '';
+        
+        if ((forceValue || (!this.currentEditingItem && !endDateInput.value)) && suggestedEnd) {
+            endDateInput.value = suggestedEnd;
+        }
+        
+        this.updateEndDateSuggestion(suggestedEnd, averageDays, category ? category.name : null, startDate);
+        this.handleEndDateInput();
+    }
+    
+    handleEndDateFocus() {
+        const endDateInput = document.getElementById('itemEndDate');
+        if (!endDateInput) return;
+        const suggested = endDateInput.dataset.suggestedDate;
+        if (suggested && !endDateInput.value) {
+            endDateInput.value = suggested;
+            this.handleEndDateInput();
+        }
+    }
+    
+    handleEndDateInput() {
+        const endDateInput = document.getElementById('itemEndDate');
+        if (!endDateInput) return;
+        const suggested = endDateInput.dataset ? endDateInput.dataset.suggestedDate : '';
+        if (!suggested) {
+            endDateInput.classList.remove('suggestion-active');
+            return;
+        }
+        endDateInput.classList.toggle('suggestion-active', endDateInput.value === suggested);
+    }
+    
+    updateEndDateSuggestion(suggestedDate, averageDays, categoryName = null, startDate = null) {
+        const hintEl = document.getElementById('endDateSuggestion');
+        if (!hintEl) return;
+        
+        if (!suggestedDate) {
+            hintEl.style.display = 'none';
+            hintEl.textContent = '';
+            return;
+        }
+        
+        const startFormatted = startDate ? this.formatDate(startDate) : null;
+        
+        hintEl.style.display = 'block';
+        hintEl.innerHTML = '';
+        
+        const summary = document.createElement('span');
+        let summaryText = `Based on a ${averageDays}-day average`;
+        if (categoryName) {
+            summaryText += ` for "${categoryName}"`;
+        } else {
+            summaryText += ' for this category';
+        }
+        if (startFormatted) {
+            summaryText += ` starting ${startFormatted}`;
+        }
+        summaryText += ', the suggested end date is ';
+        summary.textContent = summaryText;
+        hintEl.appendChild(summary);
+        
+        const endStrong = document.createElement('strong');
+        endStrong.textContent = this.formatDate(suggestedDate);
+        hintEl.appendChild(endStrong);
+    }
+    
+    getSuggestedEndDate(categoryId, startDate) {
+        if (!startDate) return '';
+        const days = this.getCategoryAverageDays(categoryId);
+        const baseDate = new Date(startDate);
+        if (isNaN(baseDate)) return '';
+        const suggested = new Date(baseDate.getTime() + (days * 24 * 60 * 60 * 1000));
+        return suggested.toISOString().split('T')[0];
+    }
+    
+    getCategoryAverageDays(categoryId) {
+        if (!categoryId) return 30;
+        const category = this.categories.find(cat => cat.id === categoryId);
+        const average = category && category.averageDays ? parseInt(category.averageDays, 10) : 30;
+        return Number.isFinite(average) && average > 0 ? average : 30;
     }
 
     deleteItem(itemId) {
@@ -540,6 +797,7 @@ class EbayListingLife {
         document.getElementById('categoriesContainer').style.display = 'block';
         document.getElementById('categoryItemsContainer').style.display = 'none';
         document.getElementById('endedItemsContainer').style.display = 'none';
+        this.setFloatingAddButtonVisibility(false);
         this.renderCategories();
     }
 
@@ -549,6 +807,7 @@ class EbayListingLife {
         document.getElementById('categoriesContainer').style.display = 'none';
         document.getElementById('categoryItemsContainer').style.display = 'none';
         document.getElementById('endedItemsContainer').style.display = 'block';
+        this.setFloatingAddButtonVisibility(false);
         this.renderEndedItems();
     }
 
@@ -558,6 +817,7 @@ class EbayListingLife {
         document.getElementById('categoriesContainer').style.display = 'none';
         document.getElementById('categoryItemsContainer').style.display = 'block';
         document.getElementById('endedItemsContainer').style.display = 'none';
+        this.setFloatingAddButtonVisibility(true);
         
         const category = this.categories.find(cat => cat.id === categoryId);
         const categoryItems = this.items.filter(item => item.categoryId === categoryId && !item.manuallyEnded);
