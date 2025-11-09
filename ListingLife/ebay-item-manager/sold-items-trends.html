@@ -99,6 +99,26 @@
         </div>
     </div>
 
+    <!-- Subcategory Items Modal -->
+    <div id="soldSubcategoryItemsModal" class="modal">
+        <div class="modal-content sold-subcategory-items-modal">
+            <span class="close" data-close-modal="soldSubcategoryItemsModal">&times;</span>
+            <h2 id="soldSubcategoryItemsTitle">Manage Items</h2>
+            <p class="modal-subtitle">Track each item sold along with its individual price.</p>
+            <div class="subcategory-items-toolbar">
+                <button type="button" id="addSoldSubcategoryItem" class="btn btn-secondary btn-small">Add Item</button>
+                <span class="subcategory-items-count-label" id="soldSubcategoryItemsCountLabel">0 items</span>
+            </div>
+            <div id="soldSubcategoryItemsList" class="subcategory-items-list">
+                <!-- Item rows injected -->
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-close-modal="soldSubcategoryItemsModal">Cancel</button>
+                <button type="button" id="saveSoldSubcategoryItemsBtn" class="btn btn-primary">Save Items</button>
+            </div>
+        </div>
+    </div>
+
     <script src="sold-trends.js"></script>
 </body>
 </html>

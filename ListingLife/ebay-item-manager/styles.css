@@ -407,6 +407,24 @@ header h1 {
     border-color: #999999;
 }
 
+.btn-tertiary {
+    background: transparent;
+    color: #0064d3;
+    border: 1px solid transparent;
+    padding: 6px 12px;
+}
+
+.btn-tertiary:hover {
+    background: rgba(0, 100, 211, 0.08);
+    border-color: rgba(0, 100, 211, 0.16);
+    transform: translateY(-1px);
+}
+
+.btn-tertiary:active {
+    background: rgba(0, 100, 211, 0.16);
+    border-color: rgba(0, 100, 211, 0.24);
+}
+
 #addItemBtn {
     background: linear-gradient(135deg, #86b817, #6f9f0e);
     color: white;
@@ -697,8 +715,9 @@ header h1 {
 
 .sold-subcategory-list li {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
     padding: 10px 14px;
     border-radius: 12px;
     background: rgba(15, 23, 42, 0.05);
@@ -713,6 +732,28 @@ header h1 {
 .sold-subcategory-count {
     font-size: 0.95rem;
     color: #0f172a;
+}
+
+.sold-subcategory-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.sold-subcategory-items-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: #374151;
+}
+
+.sold-subcategory-items-breakdown span {
+    background: rgba(15, 23, 42, 0.08);
+    padding: 4px 8px;
+    border-radius: 999px;
 }
 
 .sold-subcategory-empty {
@@ -1137,6 +1178,10 @@ header h1 {
     max-width: 780px;
 }
 
+.modal-content.sold-subcategory-items-modal {
+    max-width: 640px;
+}
+
 .close {
     color: #aaa;
     float: right;
@@ -1221,6 +1266,79 @@ header h1 {
     display: inline-block;
 }
 
+.editor-field-with-action .editor-field-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.editor-field-with-action .editor-field-label label {
+    margin-bottom: 0;
+}
+
+.subcategory-items-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 24px;
+    padding: 0 8px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: rgba(0, 100, 211, 0.12);
+    color: #0064d3;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.modal-subtitle {
+    margin-top: -10px;
+    margin-bottom: 16px;
+    color: #4b5563;
+    font-size: 0.95rem;
+}
+
+.subcategory-items-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.subcategory-items-count-label {
+    font-size: 0.9rem;
+    color: #4b5563;
+    font-weight: 600;
+}
+
+.subcategory-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.subcategory-item-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(120px, 1fr) minmax(0, auto);
+    gap: 16px;
+    background: rgba(15, 23, 42, 0.05);
+    border-radius: 12px;
+    padding: 14px;
+    align-items: end;
+}
+
+.subcategory-item-row .editor-field {
+    gap: 8px;
+}
+
+.subcategory-item-remove {
+    padding: 10px 14px;
+}
+
 .subcategory-remove-btn {
     padding: 10px 14px;
     align-self: stretch;
@@ -1241,6 +1359,14 @@ header h1 {
     .subcategory-remove-btn {
         width: 100%;
         justify-self: stretch;
+    }
+
+    .subcategory-item-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .subcategory-item-remove {
+        width: 100%;
     }
 }
 

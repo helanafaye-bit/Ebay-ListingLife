@@ -9,6 +9,13 @@ class SoldItemsTrends {
         this.addSubcategoryBtn = document.getElementById('addSoldSubcategoryRow');
         this.deleteCategoryBtn = document.getElementById('deleteSoldCategoryBtn');
         this.categoryModal = document.getElementById('soldCategoryModal');
+        this.subcategoryItemsModal = document.getElementById('soldSubcategoryItemsModal');
+        this.subcategoryItemsTitle = document.getElementById('soldSubcategoryItemsTitle');
+        this.subcategoryItemsList = document.getElementById('soldSubcategoryItemsList');
+        this.subcategoryItemsCountLabel = document.getElementById('soldSubcategoryItemsCountLabel');
+        this.addSubcategoryItemBtn = document.getElementById('addSoldSubcategoryItem');
+        this.saveSubcategoryItemsBtn = document.getElementById('saveSoldSubcategoryItemsBtn');
+        this.currentSubcategoryRow = null;
         this.periodSelect = document.getElementById('dataPeriodSelect');
         this.addPeriodBtn = document.getElementById('addDataPeriodBtn');
         this.periodModal = document.getElementById('soldPeriodModal');
@@ -69,10 +76,19 @@ class SoldItemsTrends {
                 if (e.target.classList.contains('subcategory-remove-btn')) {
                     const row = e.target.closest('.subcategory-editor-row');
                     if (row) {
+                        if (this.currentSubcategoryRow === row) {
+                            this.currentSubcategoryRow = null;
+                        }
                         row.remove();
                         if (!this.subcategoryEditorEl.querySelector('.subcategory-editor-row')) {
                             this.addSubcategoryEditorRow();
                         }
+                    }
+                } else if (e.target.closest('.subcategory-manage-btn')) {
+                    const manageBtn = e.target.closest('.subcategory-manage-btn');
+                    const row = manageBtn ? manageBtn.closest('.subcategory-editor-row') : null;
+                    if (row) {
+                        this.openSubcategoryItemsModal(row);
                     }
                 }
             });
@@ -96,6 +112,26 @@ class SoldItemsTrends {
 
         if (this.periodForm) {
             this.periodForm.addEventListener('submit', (e) => this.handlePeriodFormSubmit(e));
+        }
+
+        if (this.addSubcategoryItemBtn) {
+            this.addSubcategoryItemBtn.addEventListener('click', () => this.addSubcategoryItemEditorRow());
+        }
+
+        if (this.subcategoryItemsList) {
+            this.subcategoryItemsList.addEventListener('click', (e) => {
+                if (e.target.classList.contains('subcategory-item-remove')) {
+                    const row = e.target.closest('.subcategory-item-row');
+                    if (row) {
+                        row.remove();
+                        this.updateSubcategoryItemsCountLabel();
+                    }
+                }
+            });
+        }
+
+        if (this.saveSubcategoryItemsBtn) {
+            this.saveSubcategoryItemsBtn.addEventListener('click', () => this.handleSubcategoryItemsSave());
         }
 
         document.querySelectorAll('.close').forEach(closeBtn => {
@@ -164,6 +200,9 @@ class SoldItemsTrends {
         }
         if (modalId === 'soldCategoryModal') {
             this.currentEditingCategory = null;
+        } else if (modalId === 'soldSubcategoryItemsModal') {
+            this.currentSubcategoryRow = null;
+            this.clearSubcategoryItemsEditor();
         }
     }
 
@@ -177,22 +216,227 @@ class SoldItemsTrends {
         if (subcategory.createdAt) {
             row.dataset.createdAt = subcategory.createdAt;
         }
+        const items = this.normalizeSubcategoryItems(subcategory.items);
+        row.dataset.items = JSON.stringify(items);
+        const itemsCount = items.length;
+        const safeName = subcategory.name ? this.escapeHtml(subcategory.name) : '';
+        const countValue = Number.isFinite(subcategory.count) && subcategory.count >= 0 ? subcategory.count : itemsCount;
+        const hasManualPrice = Number.isFinite(subcategory.price) && subcategory.price >= 0 && !itemsCount;
+        const priceValue = hasManualPrice ? Number(subcategory.price) : '';
+        const countReadonlyAttr = itemsCount ? 'readonly' : '';
+        const priceDisabledAttr = itemsCount ? 'disabled' : '';
+        const countHintClass = itemsCount ? 'field-hint subcategory-count-hint visible' : 'field-hint subcategory-count-hint';
+        const priceHintClass = itemsCount ? 'field-hint subcategory-price-hint visible' : 'field-hint subcategory-price-hint';
+
         row.innerHTML = `
-            <div class="editor-field">
-                <label>Subcategory Name</label>
-                <input type="text" class="subcategory-name-input" placeholder="e.g., Plates" value="${subcategory.name ? this.escapeHtml(subcategory.name) : ''}">
+            <div class="editor-field editor-field-with-action">
+                <div class="editor-field-label">
+                    <label>Subcategory Name</label>
+                    <button type="button" class="btn btn-tertiary btn-small subcategory-manage-btn" aria-label="Manage items for this subcategory">
+                        Manage Items
+                        <span class="subcategory-items-pill" aria-live="polite">${itemsCount}</span>
+                    </button>
+                </div>
+                <input type="text" class="subcategory-name-input" placeholder="e.g., Plates" value="${safeName}">
             </div>
             <div class="editor-field">
                 <label>Sold Count</label>
-                <input type="number" class="subcategory-count-input" min="0" value="${Number.isFinite(subcategory.count) ? subcategory.count : 0}">
+                <input type="number" class="subcategory-count-input" min="0" value="${Number.isFinite(countValue) ? countValue : 0}" ${countReadonlyAttr}>
+                <span class="${countHintClass}">Count matches the number of managed items.</span>
             </div>
             <div class="editor-field">
                 <label>Sold Price (optional)</label>
-                <input type="number" class="subcategory-price-input" min="0" step="0.01" placeholder="e.g., 19.99" value="${Number.isFinite(subcategory.price) ? subcategory.price : ''}">
+                <input type="number" class="subcategory-price-input" min="0" step="0.01" placeholder="e.g., 19.99" value="${hasManualPrice ? priceValue : ''}" ${priceDisabledAttr}>
+                <span class="${priceHintClass}">Totals will use individual item prices.</span>
             </div>
             <button type="button" class="btn btn-small btn-danger subcategory-remove-btn">Remove</button>
         `;
         this.subcategoryEditorEl.appendChild(row);
+    }
+
+    openSubcategoryItemsModal(row) {
+        if (!row || !this.subcategoryItemsModal || !this.subcategoryItemsList) return;
+        this.currentSubcategoryRow = row;
+        const nameInput = row.querySelector('.subcategory-name-input');
+        const subcategoryName = nameInput ? nameInput.value.trim() : '';
+        const items = this.normalizeSubcategoryItems(row.dataset.items);
+
+        this.clearSubcategoryItemsEditor();
+
+        items.forEach(item => this.addSubcategoryItemEditorRow(item));
+        if (!items.length) {
+            this.addSubcategoryItemEditorRow();
+        }
+
+        this.updateSubcategoryItemsCountLabel();
+
+        if (this.subcategoryItemsTitle) {
+            this.subcategoryItemsTitle.textContent = subcategoryName
+                ? `Manage Items – ${subcategoryName}`
+                : 'Manage Items';
+        }
+
+        if (this.subcategoryItemsCountLabel) {
+            const label = items.length === 1 ? '1 item' : `${items.length} items`;
+            this.subcategoryItemsCountLabel.textContent = label;
+        }
+
+        this.subcategoryItemsModal.style.display = 'block';
+    }
+
+    clearSubcategoryItemsEditor() {
+        if (this.subcategoryItemsList) {
+            this.subcategoryItemsList.innerHTML = '';
+        }
+        if (this.subcategoryItemsCountLabel) {
+            this.subcategoryItemsCountLabel.textContent = '0 items';
+        }
+    }
+
+    addSubcategoryItemEditorRow(item = {}) {
+        if (!this.subcategoryItemsList) return;
+        const row = document.createElement('div');
+        row.className = 'subcategory-item-row';
+
+        if (item.id) {
+            row.dataset.itemId = item.id;
+        }
+        if (item.createdAt) {
+            row.dataset.createdAt = item.createdAt;
+        }
+
+        const safeLabel = item.label ? this.escapeHtml(item.label) : '';
+        const rawPrice = item.price;
+        const hasPrice = rawPrice !== '' && rawPrice !== null && rawPrice !== undefined && Number.isFinite(Number(rawPrice)) && Number(rawPrice) >= 0;
+        const priceValue = hasPrice ? Number(rawPrice) : '';
+
+        row.innerHTML = `
+            <div class="editor-field">
+                <label>Item Label (optional)</label>
+                <input type="text" class="subcategory-item-name" placeholder="e.g., Single plate" value="${safeLabel}">
+            </div>
+            <div class="editor-field">
+                <label>Item Price</label>
+                <input type="number" class="subcategory-item-price" min="0" step="0.01" placeholder="e.g., 12.50" value="${priceValue}">
+            </div>
+            <button type="button" class="btn btn-small btn-danger subcategory-item-remove">Remove</button>
+        `;
+
+        this.subcategoryItemsList.appendChild(row);
+        this.updateSubcategoryItemsCountLabel();
+    }
+
+    updateSubcategoryItemsCountLabel() {
+        if (!this.subcategoryItemsCountLabel || !this.subcategoryItemsList) return;
+        const count = this.subcategoryItemsList.querySelectorAll('.subcategory-item-row').length;
+        const label = count === 1 ? '1 item' : `${count} items`;
+        this.subcategoryItemsCountLabel.textContent = label;
+    }
+
+    handleSubcategoryItemsSave() {
+        if (!this.currentSubcategoryRow) {
+            this.closeModal('soldSubcategoryItemsModal');
+            return;
+        }
+        const items = this.collectSubcategoryItemsFromEditor();
+        if (items === null) {
+            return;
+        }
+
+        this.updateSubcategoryRowFromItems(this.currentSubcategoryRow, items);
+        this.closeModal('soldSubcategoryItemsModal');
+    }
+
+    collectSubcategoryItemsFromEditor() {
+        if (!this.subcategoryItemsList) return [];
+        const itemRows = Array.from(this.subcategoryItemsList.querySelectorAll('.subcategory-item-row'));
+        const timestamp = new Date().toISOString();
+        const items = [];
+
+        for (const row of itemRows) {
+            const labelInput = row.querySelector('.subcategory-item-name');
+            const priceInput = row.querySelector('.subcategory-item-price');
+            if (!priceInput) {
+                continue;
+            }
+
+            const priceRaw = priceInput.value.trim();
+            if (priceRaw === '') {
+                alert('Please enter a price for each item, or remove rows you do not need.');
+                return null;
+            }
+
+            const priceValue = Number(priceRaw);
+            if (!Number.isFinite(priceValue) || priceValue < 0) {
+                alert('Please enter a valid price (0 or greater) for each item.');
+                return null;
+            }
+
+            const label = labelInput ? labelInput.value.trim() : '';
+            const itemId = row.dataset.itemId || this.generateId('solditem');
+            const createdAt = row.dataset.createdAt || timestamp;
+
+            items.push({
+                id: itemId,
+                label,
+                price: priceValue,
+                createdAt,
+                updatedAt: timestamp
+            });
+        }
+
+        return items;
+    }
+
+    updateSubcategoryRowFromItems(row, items) {
+        if (!row) return;
+        const normalizedItems = this.normalizeSubcategoryItems(items);
+        row.dataset.items = JSON.stringify(normalizedItems);
+
+        const pill = row.querySelector('.subcategory-items-pill');
+        if (pill) {
+            pill.textContent = normalizedItems.length;
+        }
+
+        const nameInput = row.querySelector('.subcategory-name-input');
+        const manageBtn = row.querySelector('.subcategory-manage-btn');
+        if (manageBtn) {
+            const name = nameInput ? nameInput.value.trim() : '';
+            const itemText = normalizedItems.length === 1 ? '1 item' : `${normalizedItems.length} items`;
+            manageBtn.setAttribute('aria-label', name ? `Manage items for ${name} (${itemText})` : `Manage items (${itemText})`);
+        }
+
+        const countInput = row.querySelector('.subcategory-count-input');
+        const priceInput = row.querySelector('.subcategory-price-input');
+        const countHint = row.querySelector('.subcategory-count-hint');
+        const priceHint = row.querySelector('.subcategory-price-hint');
+        const itemsLength = normalizedItems.length;
+
+        if (countInput) {
+            countInput.value = itemsLength;
+            if (itemsLength) {
+                countInput.setAttribute('readonly', 'readonly');
+            } else {
+                countInput.removeAttribute('readonly');
+            }
+        }
+
+        if (priceInput) {
+            if (itemsLength) {
+                priceInput.value = '';
+                priceInput.setAttribute('disabled', 'disabled');
+            } else {
+                priceInput.removeAttribute('disabled');
+            }
+        }
+
+        if (countHint) {
+            countHint.classList.toggle('visible', Boolean(itemsLength));
+        }
+
+        if (priceHint) {
+            priceHint.classList.toggle('visible', Boolean(itemsLength));
+        }
     }
 
     handleCategorySubmit(e) {
@@ -226,13 +470,17 @@ class SoldItemsTrends {
             const existingId = row.dataset.subcategoryId;
             const createdAt = row.dataset.createdAt || timestamp;
             const priceValue = priceInputEl ? parseFloat(priceInputEl.value) : NaN;
-            const price = Number.isFinite(priceValue) && priceValue >= 0 ? priceValue : null;
+            const items = this.normalizeSubcategoryItems(row.dataset.items);
+            const hasItems = items.length > 0;
+            const resolvedCount = hasItems ? items.length : (Number.isFinite(count) && count >= 0 ? count : 0);
+            const price = hasItems ? null : (Number.isFinite(priceValue) && priceValue >= 0 ? priceValue : null);
 
             subcategories.push({
                 id: existingId || this.generateId('sub'),
                 name: subName,
-                count: Number.isFinite(count) && count >= 0 ? count : 0,
+                count: resolvedCount,
                 price,
+                items,
                 createdAt,
                 updatedAt: timestamp
             });
@@ -322,9 +570,16 @@ class SoldItemsTrends {
         let html = '';
         this.categories.forEach(category => {
             const totals = category.subcategories.reduce((acc, sub) => {
-                const count = sub.count ?? 0;
+                const items = this.normalizeSubcategoryItems(sub.items);
+                const hasItems = items.length > 0;
+                const count = hasItems ? items.length : sub.count ?? 0;
                 acc.totalSold += count;
-                if (Number.isFinite(sub.price) && sub.price > 0) {
+
+                if (hasItems) {
+                    const itemsTotal = items.reduce((sum, item) => sum + (Number.isFinite(item.price) ? item.price : 0), 0);
+                    acc.totalMade += itemsTotal;
+                    acc.hasPrice = true;
+                } else if (Number.isFinite(sub.price)) {
                     acc.totalMade += count * sub.price;
                     acc.hasPrice = true;
                 }
@@ -335,15 +590,42 @@ class SoldItemsTrends {
 
             const subcategoriesMarkup = category.subcategories.length
                 ? `<ul class="sold-subcategory-list">
-                        ${category.subcategories.map(sub => `
-                            <li>
-                                <span class="sold-subcategory-name">${this.escapeHtml(sub.name)}</span>
-                                <span class="sold-subcategory-count">
-                                    ${this.formatNumber(sub.count ?? 0)}
-                                    ${Number.isFinite(sub.price) && sub.price > 0 ? ` × ${this.formatCurrency(sub.price)}` : ''}
-                                </span>
-                            </li>
-                        `).join('')}
+                        ${category.subcategories.map(sub => {
+                            const items = this.normalizeSubcategoryItems(sub.items);
+                            const hasItems = items.length > 0;
+                            const itemCount = hasItems ? items.length : sub.count ?? 0;
+                            const countLabel = hasItems
+                                ? `${this.formatNumber(itemCount)} ${itemCount === 1 ? 'item' : 'items'}`
+                                : this.formatNumber(itemCount);
+                            let priceLabel = '';
+                            let itemsBreakdown = '';
+
+                            if (hasItems) {
+                                const itemsTotal = items.reduce((sum, item) => sum + (Number.isFinite(item.price) ? item.price : 0), 0);
+                                priceLabel = `Total ${this.formatCurrency(itemsTotal)}`;
+                                if (items.length) {
+                                    const breakdownItems = items.map(item => {
+                                        const labelPart = item.label ? `${this.escapeHtml(item.label)}: ` : '';
+                                        return `<span>${labelPart}${this.formatCurrency(item.price)}</span>`;
+                                    }).join('');
+                                    itemsBreakdown = `<div class="sold-subcategory-items-breakdown">${breakdownItems}</div>`;
+                                }
+                            } else if (Number.isFinite(sub.price)) {
+                                priceLabel = `× ${this.formatCurrency(sub.price)}`;
+                            }
+
+                            return `
+                                <li>
+                                    <div class="sold-subcategory-line">
+                                        <span class="sold-subcategory-name">${this.escapeHtml(sub.name)}</span>
+                                        <span class="sold-subcategory-count">
+                                            ${countLabel}${priceLabel ? ` · ${priceLabel}` : ''}
+                                        </span>
+                                    </div>
+                                    ${itemsBreakdown}
+                                </li>
+                            `;
+                        }).join('')}
                    </ul>`
                 : `<div class="sold-subcategory-empty">No subcategories yet. Use Edit to add the first one.</div>`;
 
@@ -551,6 +833,52 @@ class SoldItemsTrends {
             createdAt: period.createdAt || timestamp,
             updatedAt: period.updatedAt || period.createdAt || timestamp
         };
+    }
+
+    normalizeSubcategoryItems(itemsInput) {
+        if (!itemsInput) return [];
+        let rawItems;
+        if (Array.isArray(itemsInput)) {
+            rawItems = itemsInput;
+        } else if (typeof itemsInput === 'string') {
+            rawItems = this.safeParseJson(itemsInput);
+        } else {
+            rawItems = [];
+        }
+
+        if (!Array.isArray(rawItems)) return [];
+        const fallbackTimestamp = new Date().toISOString();
+
+        return rawItems
+            .map(item => this.normalizeSubcategoryItem(item, fallbackTimestamp))
+            .filter(Boolean);
+    }
+
+    normalizeSubcategoryItem(item, fallbackTimestamp) {
+        if (!item || typeof item !== 'object') return null;
+        const price = Number(item.price);
+        if (!Number.isFinite(price) || price < 0) return null;
+        const label = item.label && String(item.label).trim() ? String(item.label).trim() : '';
+        const createdAt = item.createdAt || fallbackTimestamp;
+        const updatedAt = item.updatedAt || item.createdAt || fallbackTimestamp;
+
+        return {
+            id: item.id || this.generateId('solditem'),
+            label,
+            price,
+            createdAt,
+            updatedAt
+        };
+    }
+
+    safeParseJson(str) {
+        if (typeof str !== 'string') return [];
+        try {
+            return JSON.parse(str);
+        } catch (err) {
+            console.warn('Unable to parse JSON', err);
+            return [];
+        }
     }
 
     formatNumber(value) {
