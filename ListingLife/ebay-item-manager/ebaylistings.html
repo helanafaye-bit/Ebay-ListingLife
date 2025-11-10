@@ -16,6 +16,7 @@
             <button class="menu-btn menu-btn-active" data-nav-target="listinglife">ListingLife</button>
             <button class="menu-btn" data-nav-target="ended">Items Ended</button>
             <button class="menu-btn" data-nav-target="sold">Sold Items Trends</button>
+            <button class="menu-btn" data-nav-target="settings">Settings</button>
         </div>
     </nav>
     <div class="container">
@@ -244,6 +245,18 @@
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeViewModal()">Close</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="listingConfirmModal" class="modal confirm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="listingConfirmTitle">
+        <div class="modal-content listing-confirm-modal">
+            <span class="close" id="listingConfirmClose" aria-label="Close confirmation">&times;</span>
+            <h2 id="listingConfirmTitle">Duplicate Listing</h2>
+            <p id="listingConfirmMessage" class="confirm-message">This listing already exists.</p>
+            <div class="modal-actions">
+                <button type="button" id="listingConfirmCancel" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="listingConfirmProceed" class="btn btn-primary">Proceed</button>
             </div>
         </div>
     </div>

@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.location.href = 'ebaylistings.html?view=ended&skipHome=1';
             } else if (target === 'sold') {
                 window.location.href = 'sold-items-trends.html';
+            } else if (target === 'settings') {
+                window.location.href = 'settings.html';
             }
         });
     });

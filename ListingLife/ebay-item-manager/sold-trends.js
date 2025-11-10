@@ -1,3 +1,13 @@
+const LISTING_LIFE_SETTINGS_KEY = 'ListingLifeSettings';
+const SOLD_TRENDS_DEFAULT_CURRENCY = 'GBP';
+const SOLD_TRENDS_CURRENCY_MAP = {
+    GBP: { code: 'GBP', symbol: '£', locale: 'en-GB', label: 'British Pound (£)' },
+    USD: { code: 'USD', symbol: '$', locale: 'en-US', label: 'US Dollar ($)' },
+    EUR: { code: 'EUR', symbol: '€', locale: 'de-DE', label: 'Euro (€)' },
+    AUD: { code: 'AUD', symbol: '$', locale: 'en-AU', label: 'Australian Dollar ($)' },
+    CAD: { code: 'CAD', symbol: '$', locale: 'en-CA', label: 'Canadian Dollar ($)' }
+};
+
 class SoldItemsTrends {
     constructor() {
         this.periods = [];
@@ -23,15 +33,35 @@ class SoldItemsTrends {
         this.periodNameInput = document.getElementById('soldPeriodName');
         this.periodDescriptionInput = document.getElementById('soldPeriodDescription');
         this.dataPeriodDisplay = document.getElementById('dataPeriodDisplay');
+        this.removePeriodBtn = document.getElementById('removeDataPeriodBtn');
+        this.notificationEl = document.getElementById('soldAppNotification');
+        this.notificationMessageEl = document.getElementById('soldAppNotificationMessage');
+        this.notificationCloseBtn = document.getElementById('soldAppNotificationClose');
+        this.notificationHideTimeout = null;
+        this.confirmModal = document.getElementById('soldConfirmModal');
+        this.confirmTitleEl = document.getElementById('soldConfirmTitle');
+        this.confirmMessageEl = document.getElementById('soldConfirmMessage');
+        this.confirmCancelBtn = document.getElementById('soldConfirmCancel');
+        this.confirmAcceptBtn = document.getElementById('soldConfirmAccept');
+        this.activeConfirmResolver = null;
+        this.confirmDefaults = {
+            title: 'Confirm Action',
+            confirmLabel: 'Confirm',
+            cancelLabel: 'Cancel',
+            variant: 'danger'
+        };
+        this.currencyConfig = null;
         this.init();
     }
 
     init() {
+        this.setupNotificationSystem();
         this.loadData();
         this.setupEventListeners();
         this.updatePeriodSelect();
         this.renderDataPeriod();
         this.renderCategories();
+        this.updateRemovePeriodButtonState();
     }
 
     setupEventListeners() {
@@ -49,6 +79,8 @@ class SoldItemsTrends {
                     window.location.href = 'ebaylistings.html?view=ended&skipHome=1';
                 } else if (target === 'sold') {
                     window.location.href = 'sold-items-trends.html';
+                } else if (target === 'settings') {
+                    window.location.href = 'settings.html';
                 }
             });
         });
@@ -110,6 +142,10 @@ class SoldItemsTrends {
             this.addPeriodBtn.addEventListener('click', () => this.openPeriodModal());
         }
 
+        if (this.removePeriodBtn) {
+            this.removePeriodBtn.addEventListener('click', () => this.handleRemovePeriod());
+        }
+
         if (this.periodForm) {
             this.periodForm.addEventListener('submit', (e) => this.handlePeriodFormSubmit(e));
         }
@@ -156,6 +192,34 @@ class SoldItemsTrends {
             const category = this.categories.find(cat => cat.id === editBtn.dataset.categoryId);
             this.openCategoryModal(category || null);
         });
+
+        const categoriesContainer = document.getElementById('soldCategoriesContainer');
+        if (categoriesContainer) {
+            categoriesContainer.addEventListener('click', (e) => {
+                const editButton = e.target.closest('button[data-action="edit-category"]');
+                if (editButton) {
+                    return;
+                }
+
+                const categoryBox = e.target.closest('.category-box[data-category-id]');
+                if (!categoryBox) return;
+
+                const categoryId = categoryBox.dataset.categoryId;
+                if (!categoryId) return;
+
+                const category = this.categories.find(cat => cat.id === categoryId);
+                if (category) {
+                    this.openCategoryModal(category);
+                }
+            });
+        }
+
+        window.addEventListener('storage', (event) => {
+            if (event.key === LISTING_LIFE_SETTINGS_KEY) {
+                this.currencyConfig = null;
+                this.renderCategories();
+            }
+        });
     }
 
     openCategoryModal(category = null) {
@@ -194,6 +258,10 @@ class SoldItemsTrends {
 
     closeModal(modalId) {
         if (!modalId) return;
+        if (modalId === 'soldConfirmModal') {
+            this.resolveConfirm(false);
+            return;
+        }
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.style.display = 'none';
@@ -229,14 +297,8 @@ class SoldItemsTrends {
         const priceHintClass = itemsCount ? 'field-hint subcategory-price-hint visible' : 'field-hint subcategory-price-hint';
 
         row.innerHTML = `
-            <div class="editor-field editor-field-with-action">
-                <div class="editor-field-label">
-                    <label>Subcategory Name</label>
-                    <button type="button" class="btn btn-tertiary btn-small subcategory-manage-btn" aria-label="Manage items for this subcategory">
-                        Manage Items
-                        <span class="subcategory-items-pill" aria-live="polite">${itemsCount}</span>
-                    </button>
-                </div>
+            <div class="editor-field">
+                <label>Subcategory Name</label>
                 <input type="text" class="subcategory-name-input" placeholder="e.g., Plates" value="${safeName}">
             </div>
             <div class="editor-field">
@@ -249,7 +311,13 @@ class SoldItemsTrends {
                 <input type="number" class="subcategory-price-input" min="0" step="0.01" placeholder="e.g., 19.99" value="${hasManualPrice ? priceValue : ''}" ${priceDisabledAttr}>
                 <span class="${priceHintClass}">Totals will use individual item prices.</span>
             </div>
-            <button type="button" class="btn btn-small btn-danger subcategory-remove-btn">Remove</button>
+            <div class="subcategory-row-actions">
+                <button type="button" class="btn btn-secondary btn-small subcategory-manage-btn" aria-label="Manage items for this subcategory">
+                    Manage Items
+                    <span class="subcategory-items-pill" aria-live="polite">${itemsCount}</span>
+                </button>
+                <button type="button" class="btn btn-small btn-danger subcategory-remove-btn">Remove</button>
+            </div>
         `;
         this.subcategoryEditorEl.appendChild(row);
     }
@@ -362,13 +430,13 @@ class SoldItemsTrends {
 
             const priceRaw = priceInput.value.trim();
             if (priceRaw === '') {
-                alert('Please enter a price for each item, or remove rows you do not need.');
+                this.showNotification('Please enter a price for each item, or remove rows you do not need.', 'warning');
                 return null;
             }
 
             const priceValue = Number(priceRaw);
             if (!Number.isFinite(priceValue) || priceValue < 0) {
-                alert('Please enter a valid price (0 or greater) for each item.');
+                this.showNotification('Please enter a valid price (0 or greater) for each item.', 'warning');
                 return null;
             }
 
@@ -450,7 +518,7 @@ class SoldItemsTrends {
         const description = descriptionInput ? descriptionInput.value.trim() : '';
 
         if (!name) {
-            alert('Please enter a category name.');
+            this.showNotification('Please enter a category name.', 'warning');
             return;
         }
 
@@ -508,12 +576,23 @@ class SoldItemsTrends {
         this.closeModal('soldCategoryModal');
     }
 
-    deleteCategory(categoryId, skipConfirm = false) {
+    async deleteCategory(categoryId, skipConfirm = false) {
         const category = this.categories.find(cat => cat.id === categoryId);
         if (!category) return;
 
-        if (!skipConfirm && !confirm(`Delete category "${category.name}" and all of its subcategories?`)) {
-            return;
+        if (!skipConfirm) {
+            const confirmed = await this.showConfirm(
+                `Delete category "${category.name}" and all of its subcategories?`,
+                {
+                    title: 'Delete Category',
+                    confirmLabel: 'Delete',
+                    cancelLabel: 'Cancel',
+                    variant: 'danger'
+                }
+            );
+            if (!confirmed) {
+                return;
+            }
         }
 
         const idx = this.categories.findIndex(cat => cat.id === categoryId);
@@ -524,12 +603,24 @@ class SoldItemsTrends {
         this.saveData();
         this.renderCategories();
         this.closeModal('soldCategoryModal');
+        this.showNotification(`Deleted category "${category.name}".`, 'success');
     }
 
-    handleResetData() {
-        if (!confirm('This will clear all sold trend data. Continue?')) {
+    async handleResetData() {
+        const confirmed = await this.showConfirm(
+            'This will clear all sold trend data. This action cannot be undone.',
+            {
+                title: 'Reset Sold Trends Data',
+                confirmLabel: 'Reset Data',
+                cancelLabel: 'Cancel',
+                variant: 'danger'
+            }
+        );
+
+        if (!confirmed) {
             return;
         }
+
         localStorage.removeItem('SoldItemsTrends');
         this.periods = [];
         this.currentPeriodId = null;
@@ -539,6 +630,8 @@ class SoldItemsTrends {
         this.renderDataPeriod();
         this.saveData();
         this.closeModal('soldCategoryModal');
+        this.updateRemovePeriodButtonState();
+        this.showNotification('Sold trend data has been reset.', 'success');
     }
 
     renderCategories() {
@@ -598,20 +691,12 @@ class SoldItemsTrends {
                                 ? `${this.formatNumber(itemCount)} ${itemCount === 1 ? 'item' : 'items'}`
                                 : this.formatNumber(itemCount);
                             let priceLabel = '';
-                            let itemsBreakdown = '';
 
                             if (hasItems) {
                                 const itemsTotal = items.reduce((sum, item) => sum + (Number.isFinite(item.price) ? item.price : 0), 0);
-                                priceLabel = `Total ${this.formatCurrency(itemsTotal)}`;
-                                if (items.length) {
-                                    const breakdownItems = items.map(item => {
-                                        const labelPart = item.label ? `${this.escapeHtml(item.label)}: ` : '';
-                                        return `<span>${labelPart}${this.formatCurrency(item.price)}</span>`;
-                                    }).join('');
-                                    itemsBreakdown = `<div class="sold-subcategory-items-breakdown">${breakdownItems}</div>`;
-                                }
+                                priceLabel = `Total <span class="sold-price-value">${this.formatCurrency(itemsTotal)}</span>`;
                             } else if (Number.isFinite(sub.price)) {
-                                priceLabel = `× ${this.formatCurrency(sub.price)}`;
+                                priceLabel = `× <span class="sold-price-value">${this.formatCurrency(sub.price)}</span>`;
                             }
 
                             return `
@@ -622,25 +707,31 @@ class SoldItemsTrends {
                                             ${countLabel}${priceLabel ? ` · ${priceLabel}` : ''}
                                         </span>
                                     </div>
-                                    ${itemsBreakdown}
                                 </li>
                             `;
                         }).join('')}
                    </ul>`
                 : `<div class="sold-subcategory-empty">No subcategories yet. Use Edit to add the first one.</div>`;
 
+            const totalSoldMarkup = `<span class="sold-total-inline sold-category-total">Total sold: <strong>${this.formatNumber(totals.totalSold)}</strong></span>`;
+            const totalMadeMarkup = totals.hasPrice
+                ? `<span class="sold-total-inline sold-category-total sold-total-made">Total made: <strong class="sold-price-value">${this.formatCurrency(totals.totalMade)}</strong></span>`
+                : '';
+
             html += `
                 <div class="category-box sold-category-box" data-category-id="${category.id}">
                     <div class="sold-category-header">
                         <h3>${this.escapeHtml(category.name)}</h3>
-                        <p class="sold-total-inline">Total sold: <strong>${this.formatNumber(totals.totalSold)}</strong></p>
-                        ${totals.hasPrice ? `<p class="sold-total-inline">Total made: <strong>${this.formatCurrency(totals.totalMade)}</strong></p>` : ''}
                         ${category.description ? `<p class="sold-category-description">${this.escapeHtml(category.description)}</p>` : ''}
                         <p class="sold-card-updated">Updated ${updatedText}</p>
                     </div>
                     ${subcategoriesMarkup}
                     <div class="sold-category-actions">
                         <button class="btn btn-small btn-primary" data-action="edit-category" data-category-id="${category.id}">Edit</button>
+                        <div class="sold-category-totals">
+                            ${totalSoldMarkup}
+                            ${totalMadeMarkup}
+                        </div>
                     </div>
                 </div>
             `;
@@ -654,6 +745,209 @@ class SoldItemsTrends {
             periods: this.periods,
             currentPeriodId: this.currentPeriodId
         }));
+    }
+
+    setupNotificationSystem() {
+        if (this.notificationCloseBtn) {
+            this.notificationCloseBtn.addEventListener('click', () => this.hideNotification());
+        }
+
+        if (this.notificationEl) {
+            this.notificationEl.addEventListener('click', (e) => {
+                if (e.target === this.notificationEl) {
+                    this.hideNotification();
+                }
+            });
+        }
+
+        if (this.confirmCancelBtn) {
+            this.confirmCancelBtn.addEventListener('click', () => this.resolveConfirm(false));
+        }
+
+        if (this.confirmAcceptBtn) {
+            this.confirmAcceptBtn.addEventListener('click', () => this.resolveConfirm(true));
+        }
+
+        if (this.confirmModal) {
+            this.confirmModal.addEventListener('click', (e) => {
+                if (e.target === this.confirmModal) {
+                    this.resolveConfirm(false);
+                }
+            });
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (this.activeConfirmResolver) {
+                    this.resolveConfirm(false);
+                } else if (this.notificationEl && this.notificationEl.classList.contains('visible')) {
+                    this.hideNotification();
+                }
+            }
+        });
+    }
+
+    showNotification(message, type = 'info', options = {}) {
+        if (!this.notificationEl || !this.notificationMessageEl) {
+            return;
+        }
+
+        const { duration = 4000 } = options;
+
+        if (this.notificationHideTimeout) {
+            clearTimeout(this.notificationHideTimeout);
+        }
+
+        this.notificationMessageEl.textContent = message;
+        this.notificationEl.dataset.type = type;
+        this.notificationEl.classList.add('visible');
+        this.notificationEl.setAttribute('aria-hidden', 'false');
+
+        if (duration !== null) {
+            this.notificationHideTimeout = setTimeout(() => this.hideNotification(), duration);
+        }
+    }
+
+    hideNotification() {
+        if (!this.notificationEl) {
+            return;
+        }
+        if (this.notificationHideTimeout) {
+            clearTimeout(this.notificationHideTimeout);
+            this.notificationHideTimeout = null;
+        }
+        this.notificationEl.classList.remove('visible');
+        this.notificationEl.setAttribute('aria-hidden', 'true');
+        delete this.notificationEl.dataset.type;
+        if (this.notificationMessageEl) {
+            this.notificationMessageEl.textContent = '';
+        }
+    }
+
+    showConfirm(message, options = {}) {
+        if (!this.confirmModal || !this.confirmMessageEl) {
+            return Promise.resolve(true);
+        }
+
+        if (this.activeConfirmResolver) {
+            this.resolveConfirm(false);
+        }
+
+        const settings = {
+            ...this.confirmDefaults,
+            ...options
+        };
+
+        this.confirmMessageEl.textContent = message;
+        if (this.confirmTitleEl) {
+            this.confirmTitleEl.textContent = settings.title;
+        }
+
+        if (this.confirmCancelBtn) {
+            this.confirmCancelBtn.textContent = settings.cancelLabel;
+        }
+
+        if (this.confirmAcceptBtn) {
+            this.confirmAcceptBtn.textContent = settings.confirmLabel;
+            this.confirmAcceptBtn.classList.remove('btn-primary', 'btn-danger');
+            const variantClass = settings.variant === 'primary' ? 'btn-primary' : 'btn-danger';
+            this.confirmAcceptBtn.classList.add(variantClass);
+        }
+
+        this.confirmModal.style.display = 'block';
+        this.confirmModal.setAttribute('aria-hidden', 'false');
+
+        const focusTarget = settings.focus === 'cancel' ? this.confirmCancelBtn : this.confirmAcceptBtn;
+        if (focusTarget && typeof focusTarget.focus === 'function') {
+            focusTarget.focus();
+        }
+
+        return new Promise((resolve) => {
+            this.activeConfirmResolver = resolve;
+        });
+    }
+
+    resolveConfirm(result) {
+        if (this.confirmModal) {
+            this.confirmModal.style.display = 'none';
+            this.confirmModal.setAttribute('aria-hidden', 'true');
+        }
+
+        if (this.confirmAcceptBtn) {
+            this.confirmAcceptBtn.classList.remove('btn-primary');
+            if (!this.confirmAcceptBtn.classList.contains('btn-danger')) {
+                this.confirmAcceptBtn.classList.add('btn-danger');
+            }
+        }
+
+        const resolver = this.activeConfirmResolver;
+        this.activeConfirmResolver = null;
+        if (typeof resolver === 'function') {
+            resolver(Boolean(result));
+        }
+    }
+
+    updateRemovePeriodButtonState() {
+        if (this.removePeriodBtn) {
+            this.removePeriodBtn.disabled = !this.periods.length;
+        }
+    }
+
+    async handleRemovePeriod() {
+        if (!this.periods.length) {
+            this.showNotification('No periods available to remove.', 'warning');
+            return;
+        }
+        const period = this.getCurrentPeriod();
+        if (!period) {
+            this.showNotification('No period selected to remove.', 'warning');
+            return;
+        }
+
+        const confirmed = await this.showConfirm(
+            `Remove the period "${period.name}"? This deletes all categories and sold data saved for it.`,
+            {
+                title: 'Remove Period',
+                confirmLabel: 'Remove',
+                cancelLabel: 'Keep Period',
+                variant: 'danger'
+            }
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const removed = this.removePeriod(period.id);
+        if (removed) {
+            this.showNotification(`Removed period "${period.name}".`, 'success');
+        }
+    }
+
+    removePeriod(periodId) {
+        const index = this.periods.findIndex(period => period.id === periodId);
+        if (index === -1) {
+            this.showNotification('Unable to find that period. Please try again.', 'error');
+            return false;
+        }
+
+        this.periods.splice(index, 1);
+
+        if (!this.periods.length) {
+            this.currentPeriodId = null;
+            this.categories = [];
+        } else {
+            const nextIndex = index >= this.periods.length ? this.periods.length - 1 : index;
+            this.currentPeriodId = this.periods[nextIndex].id;
+        }
+
+        this.syncCategoriesFromPeriod();
+        this.updatePeriodSelect();
+        this.renderDataPeriod();
+        this.renderCategories();
+        this.saveData();
+        this.updateRemovePeriodButtonState();
+        return true;
     }
 
     loadData() {
@@ -698,6 +992,7 @@ class SoldItemsTrends {
         }
 
         this.syncCategoriesFromPeriod();
+        this.updateRemovePeriodButtonState();
     }
 
     renderDataPeriod() {
@@ -732,7 +1027,7 @@ class SoldItemsTrends {
         const description = this.periodDescriptionInput ? this.periodDescriptionInput.value.trim() : '';
 
         if (!name) {
-            alert('Please enter a period name.');
+            this.showNotification('Please enter a period name.', 'warning');
             return;
         }
 
@@ -740,6 +1035,7 @@ class SoldItemsTrends {
         this.periods.push(newPeriod);
         this.closeModal('soldPeriodModal');
         this.setCurrentPeriod(newPeriod.id);
+        this.showNotification(`Added period "${name}".`, 'success');
     }
 
     setCurrentPeriod(periodId) {
@@ -783,6 +1079,7 @@ class SoldItemsTrends {
             option.selected = true;
             this.periodSelect.appendChild(option);
             this.periodSelect.disabled = true;
+            this.updateRemovePeriodButtonState();
             return;
         }
 
@@ -797,6 +1094,7 @@ class SoldItemsTrends {
             }
             this.periodSelect.appendChild(option);
         });
+        this.updateRemovePeriodButtonState();
     }
 
     touchCurrentPeriod(timestamp = new Date().toISOString()) {
@@ -886,12 +1184,16 @@ class SoldItemsTrends {
     }
 
     formatCurrency(value) {
-        return Number(value || 0).toLocaleString('en-GB', {
-            style: 'currency',
-            currency: 'GBP',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        });
+        const config = this.getCurrencyConfig();
+        const numericValue = Number(value || 0);
+        const safeValue = Number.isFinite(numericValue) ? numericValue : 0;
+        const localized = typeof Intl !== 'undefined'
+            ? safeValue.toLocaleString(config.locale || undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })
+            : safeValue.toFixed(2);
+        return `${config.symbol}${localized}`;
     }
 
     formatRelativeDate(dateString) {
@@ -924,6 +1226,35 @@ class SoldItemsTrends {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    getCurrencyConfig() {
+        if (!this.currencyConfig) {
+            this.currencyConfig = this.loadCurrencyConfig();
+        }
+        return this.currencyConfig;
+    }
+
+    loadCurrencyConfig() {
+        const settings = this.loadGlobalSettings();
+        return this.resolveCurrencyConfig(settings.soldCurrency);
+    }
+
+    resolveCurrencyConfig(code) {
+        const key = code && Object.prototype.hasOwnProperty.call(SOLD_TRENDS_CURRENCY_MAP, code)
+            ? code
+            : SOLD_TRENDS_DEFAULT_CURRENCY;
+        return SOLD_TRENDS_CURRENCY_MAP[key];
+    }
+
+    loadGlobalSettings() {
+        try {
+            const raw = localStorage.getItem(LISTING_LIFE_SETTINGS_KEY);
+            return raw ? JSON.parse(raw) : {};
+        } catch (error) {
+            console.warn('Unable to parse ListingLife settings; using defaults.', error);
+            return {};
+        }
     }
 }
 

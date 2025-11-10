@@ -12,11 +12,26 @@ class EbayListingLife {
         this.sidebarMode = 'recent'; // 'recent' or 'ending'
         this.lastSuggestedEndDate = null;
         this.endDateManuallyModified = false;
+        this.listingConfirmModal = null;
+        this.listingConfirmTitleEl = null;
+        this.listingConfirmMessageEl = null;
+        this.listingConfirmCancelBtn = null;
+        this.listingConfirmProceedBtn = null;
+        this.listingConfirmCloseBtn = null;
+        this.activeListingConfirmResolver = null;
+        this.listingConfirmDefaults = {
+            title: 'Confirm Action',
+            confirmLabel: 'Proceed',
+            cancelLabel: 'Cancel',
+            focus: 'confirm',
+            variant: 'primary'
+        };
         
         this.init();
     }
 
     init() {
+        this.setupUiHelpers();
         this.loadData();
         this.setupEventListeners();
         this.renderCategories();
@@ -35,6 +50,110 @@ class EbayListingLife {
                 console.log(`Item ${index}:`, item);
             });
         }, 1000);
+    }
+
+    setupUiHelpers() {
+        this.listingConfirmModal = document.getElementById('listingConfirmModal');
+        this.listingConfirmTitleEl = document.getElementById('listingConfirmTitle');
+        this.listingConfirmMessageEl = document.getElementById('listingConfirmMessage');
+        this.listingConfirmCancelBtn = document.getElementById('listingConfirmCancel');
+        this.listingConfirmProceedBtn = document.getElementById('listingConfirmProceed');
+        this.listingConfirmCloseBtn = document.getElementById('listingConfirmClose');
+
+        if (this.listingConfirmCancelBtn) {
+            this.listingConfirmCancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.resolveListingConfirm(false);
+            });
+        }
+
+        if (this.listingConfirmCloseBtn) {
+            this.listingConfirmCloseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.resolveListingConfirm(false);
+            });
+        }
+
+        if (this.listingConfirmProceedBtn) {
+            this.listingConfirmProceedBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.resolveListingConfirm(true);
+            });
+        }
+
+        if (this.listingConfirmModal) {
+            this.listingConfirmModal.addEventListener('click', (e) => {
+                if (e.target === this.listingConfirmModal) {
+                    this.resolveListingConfirm(false);
+                }
+            });
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.activeListingConfirmResolver) {
+                this.resolveListingConfirm(false);
+            }
+        });
+    }
+
+    showListingConfirm(message, options = {}) {
+        if (!this.listingConfirmModal || !this.listingConfirmMessageEl) {
+            return Promise.resolve(true);
+        }
+
+        if (this.activeListingConfirmResolver) {
+            this.resolveListingConfirm(false);
+        }
+
+        const settings = {
+            ...this.listingConfirmDefaults,
+            ...options
+        };
+
+        if (this.listingConfirmTitleEl) {
+            this.listingConfirmTitleEl.textContent = settings.title || this.listingConfirmDefaults.title;
+        }
+        this.listingConfirmMessageEl.textContent = message || 'This listing already exists.';
+
+        if (this.listingConfirmCancelBtn) {
+            this.listingConfirmCancelBtn.textContent = settings.cancelLabel || this.listingConfirmDefaults.cancelLabel;
+        }
+
+        if (this.listingConfirmProceedBtn) {
+            this.listingConfirmProceedBtn.textContent = settings.confirmLabel || this.listingConfirmDefaults.confirmLabel;
+            this.listingConfirmProceedBtn.classList.remove('btn-primary', 'btn-danger');
+            const variantClass = settings.variant === 'danger' ? 'btn-danger' : 'btn-primary';
+            this.listingConfirmProceedBtn.classList.add(variantClass);
+        }
+
+        this.listingConfirmModal.style.display = 'block';
+        this.listingConfirmModal.setAttribute('aria-hidden', 'false');
+
+        const focusTarget = settings.focus === 'cancel' ? this.listingConfirmCancelBtn : this.listingConfirmProceedBtn;
+        if (focusTarget && typeof focusTarget.focus === 'function') {
+            setTimeout(() => focusTarget.focus(), 0);
+        }
+
+        return new Promise((resolve) => {
+            this.activeListingConfirmResolver = resolve;
+        });
+    }
+
+    resolveListingConfirm(result) {
+        if (this.listingConfirmModal) {
+            this.listingConfirmModal.style.display = 'none';
+            this.listingConfirmModal.setAttribute('aria-hidden', 'true');
+        }
+
+        const resolver = this.activeListingConfirmResolver;
+        this.activeListingConfirmResolver = null;
+
+        if (typeof resolver === 'function') {
+            resolver(Boolean(result));
+        }
     }
 
     setupEventListeners() {
@@ -59,6 +178,9 @@ class EbayListingLife {
                     this.showEndedItemsView();
                 } else if (target === 'sold') {
                     window.location.href = 'sold-items-trends.html';
+                    return;
+                } else if (target === 'settings') {
+                    window.location.href = 'settings.html';
                     return;
                 }
                 this.updateActiveNav(target);
@@ -131,7 +253,11 @@ class EbayListingLife {
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
                 console.log('Clicked outside modal, closing:', e.target.id);
-                e.target.style.display = 'none';
+                if (e.target.id === 'listingConfirmModal') {
+                    this.resolveListingConfirm(false);
+                } else {
+                    e.target.style.display = 'none';
+                }
             }
         });
         
@@ -498,21 +624,34 @@ class EbayListingLife {
         this.updateUrgentItems();
     }
 
-    deleteCategory(categoryId) {
-        if (confirm('Are you sure you want to delete this category? All items in this category will also be deleted.')) {
-            this.categories = this.categories.filter(cat => cat.id !== categoryId);
-            this.items = this.items.filter(item => item.categoryId !== categoryId);
-            try {
-                this.saveData();
-            } catch (error) {
-                console.error('Error saving after category deletion:', error);
-                alert('Error saving changes: ' + error.message);
-                return;
+    async deleteCategory(categoryId) {
+        const confirmed = await this.showListingConfirm(
+            'Are you sure you want to delete this category? All items in this category will also be deleted.',
+            {
+                title: 'Delete Category',
+                confirmLabel: 'Delete',
+                cancelLabel: 'Cancel',
+                focus: 'cancel',
+                variant: 'danger'
             }
-            this.renderCategories();
-            this.updateCategorySelect();
-            this.updateUrgentItems();
+        );
+
+        if (!confirmed) {
+            return;
         }
+
+        this.categories = this.categories.filter(cat => cat.id !== categoryId);
+        this.items = this.items.filter(item => item.categoryId !== categoryId);
+        try {
+            this.saveData();
+        } catch (error) {
+            console.error('Error saving after category deletion:', error);
+            alert('Error saving changes: ' + error.message);
+            return;
+        }
+        this.renderCategories();
+        this.updateCategorySelect();
+        this.updateUrgentItems();
     }
 
     // Item Management
@@ -573,7 +712,7 @@ class EbayListingLife {
         modal.style.display = 'block';
     }
 
-    handleItemSubmit(e) {
+    async handleItemSubmit(e) {
         e.preventDefault();
         const categoryId = document.getElementById('itemCategory').value;
         const name = document.getElementById('itemName').value.trim();
@@ -612,6 +751,28 @@ class EbayListingLife {
         let duration = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
         duration = Math.max(duration, 1);
         
+        const normalizedName = name.toLowerCase();
+        const duplicateItem = this.items.find(item =>
+            item.categoryId === categoryId &&
+            !item.manuallyEnded &&
+            item.name &&
+            item.name.trim().toLowerCase() === normalizedName &&
+            (!this.currentEditingItem || item.id !== this.currentEditingItem.id)
+        );
+
+        if (duplicateItem) {
+            const proceed = await this.showListingConfirm('This listing already exists.', {
+                title: 'Duplicate Listing',
+                confirmLabel: 'Proceed',
+                cancelLabel: 'Cancel',
+                focus: 'cancel',
+                variant: 'primary'
+            });
+
+            if (!proceed) {
+                return;
+            }
+        }
 
         if (this.currentEditingItem) {
             // Edit existing item
@@ -702,55 +863,68 @@ class EbayListingLife {
         this.closeModals();
     }
 
-    deleteItem(itemId) {
-        if (confirm('Are you sure you want to delete this item?')) {
-            this.items = this.items.filter(item => item.id !== itemId);
-            try {
-                this.saveData();
-            } catch (error) {
-                console.error('Error saving after item deletion:', error);
-                alert('Error saving changes: ' + error.message);
-                return;
+    async deleteItem(itemId) {
+        const confirmed = await this.showListingConfirm(
+            'Are you sure you want to delete this item?',
+            {
+                title: 'Delete Item',
+                confirmLabel: 'Delete',
+                cancelLabel: 'Cancel',
+                focus: 'cancel',
+                variant: 'danger'
             }
-            this.renderCategories();
-            this.updateUrgentItems();
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        this.items = this.items.filter(item => item.id !== itemId);
+        try {
+            this.saveData();
+        } catch (error) {
+            console.error('Error saving after item deletion:', error);
+            alert('Error saving changes: ' + error.message);
+            return;
+        }
+        this.renderCategories();
+        this.updateUrgentItems();
+        
+        // If we're viewing items for a category, refresh that view
+        if (this.currentView === 'items' && this.selectedCategoryId) {
+            // Re-apply current sort order
+            const sortOrder = document.getElementById('categorySortSelect').value;
+            const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId && !item.manuallyEnded);
+            let sortedItems = [...categoryItems];
             
-            // If we're viewing items for a category, refresh that view
-            if (this.currentView === 'items' && this.selectedCategoryId) {
-                // Re-apply current sort order
-                const sortOrder = document.getElementById('categorySortSelect').value;
-                const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId && !item.manuallyEnded);
-                let sortedItems = [...categoryItems];
-                
-                if (sortOrder === 'newest') {
-                    sortedItems.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
-                } else if (sortOrder === 'oldest') {
-                    sortedItems.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
-                } else if (sortOrder === 'lowest-days') {
-                    sortedItems.sort((a, b) => {
-                        const aDaysLeft = this.calculateDaysLeft(a);
-                        const bDaysLeft = this.calculateDaysLeft(b);
-                        return aDaysLeft - bDaysLeft;
-                    });
-                } else if (sortOrder === 'highest-days') {
-                    sortedItems.sort((a, b) => {
-                        const aDaysLeft = this.calculateDaysLeft(a);
-                        const bDaysLeft = this.calculateDaysLeft(b);
-                        return bDaysLeft - aDaysLeft;
-                    });
-                }
-                
-                this.renderCategoryItems(sortedItems);
+            if (sortOrder === 'newest') {
+                sortedItems.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+            } else if (sortOrder === 'oldest') {
+                sortedItems.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+            } else if (sortOrder === 'lowest-days') {
+                sortedItems.sort((a, b) => {
+                    const aDaysLeft = this.calculateDaysLeft(a);
+                    const bDaysLeft = this.calculateDaysLeft(b);
+                    return aDaysLeft - bDaysLeft;
+                });
+            } else if (sortOrder === 'highest-days') {
+                sortedItems.sort((a, b) => {
+                    const aDaysLeft = this.calculateDaysLeft(a);
+                    const bDaysLeft = this.calculateDaysLeft(b);
+                    return bDaysLeft - aDaysLeft;
+                });
             }
             
-            // If we're viewing ended items, refresh that view
-            if (this.currentView === 'ended') {
-                this.renderEndedItems();
-            }
+            this.renderCategoryItems(sortedItems);
+        }
+        
+        // If we're viewing ended items, refresh that view
+        if (this.currentView === 'ended') {
+            this.renderEndedItems();
         }
     }
 
-    endItem(itemId) {
+    async endItem(itemId) {
         const item = this.items.find(i => i.id === itemId);
         if (!item) {
             console.error('Item not found for ending:', itemId);
@@ -761,56 +935,59 @@ class EbayListingLife {
         const category = this.categories.find(cat => cat.id === item.categoryId);
         const categoryName = category ? category.name : 'Unknown';
         
-        if (confirm(`Are you sure you want to end the item "${itemName}" from category "${categoryName}"?\n\nThis will move the item to the "Items Ended" list.`)) {
-            // Mark the item as manually ended
-            item.manuallyEnded = true;
-            item.endedDate = new Date().toISOString().split('T')[0];
+        const confirmed = await this.showListingConfirm(
+            `Are you sure you want to end the item "${itemName}" from category "${categoryName}"?\n\nThis will move the item to the "Items Ended" list.`,
+            {
+                title: 'End Item',
+                confirmLabel: 'End Item',
+                cancelLabel: 'Cancel',
+                focus: 'cancel',
+                variant: 'primary'
+            }
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        // Mark the item as manually ended
+        item.manuallyEnded = true;
+        item.endedDate = new Date().toISOString().split('T')[0];
+        
+        try {
+            this.saveData();
+        } catch (error) {
+            console.error('Error saving after ending item:', error);
+            alert('Error saving changes: ' + error.message);
+            return;
+        }
+        
+        this.renderCategories();
+        this.updateUrgentItems();
+        
+        // If we're viewing items for a category, refresh that view
+        if (this.currentView === 'items' && this.selectedCategoryId) {
+            // Re-apply current sort order
+            const sortOrder = document.getElementById('categorySortSelect').value;
+            const categoryItems = this.items.filter(it => it.categoryId === this.selectedCategoryId && !it.manuallyEnded);
+            let sortedItems = [...categoryItems];
             
-            try {
-                this.saveData();
-            } catch (error) {
-                console.error('Error saving after ending item:', error);
-                alert('Error saving changes: ' + error.message);
-                return;
+            if (sortOrder === 'newest') {
+                sortedItems.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+            } else if (sortOrder === 'oldest') {
+                sortedItems.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+            } else if (sortOrder === 'lowest-days') {
+                sortedItems.sort((a, b) => this.calculateDaysLeft(a) - this.calculateDaysLeft(b));
+            } else if (sortOrder === 'highest-days') {
+                sortedItems.sort((a, b) => this.calculateDaysLeft(b) - this.calculateDaysLeft(a));
             }
             
-            this.renderCategories();
-            this.updateUrgentItems();
-            
-            // If we're viewing items for a category, refresh that view
-            if (this.currentView === 'items' && this.selectedCategoryId) {
-                // Re-apply current sort order
-                const sortOrder = document.getElementById('categorySortSelect').value;
-                const categoryItems = this.items.filter(item => item.categoryId === this.selectedCategoryId && !item.manuallyEnded);
-                let sortedItems = [...categoryItems];
-                
-                if (sortOrder === 'newest') {
-                    sortedItems.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
-                } else if (sortOrder === 'oldest') {
-                    sortedItems.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
-                } else if (sortOrder === 'lowest-days') {
-                    sortedItems.sort((a, b) => {
-                        const aDaysLeft = this.calculateDaysLeft(a);
-                        const bDaysLeft = this.calculateDaysLeft(b);
-                        return aDaysLeft - bDaysLeft;
-                    });
-                } else if (sortOrder === 'highest-days') {
-                    sortedItems.sort((a, b) => {
-                        const aDaysLeft = this.calculateDaysLeft(a);
-                        const bDaysLeft = this.calculateDaysLeft(b);
-                        return bDaysLeft - aDaysLeft;
-                    });
-                }
-                
-                this.renderCategoryItems(sortedItems);
-            }
-            
-            // If we're viewing ended items, refresh that view
-            if (this.currentView === 'ended') {
-                this.renderEndedItems();
-            }
-            
-            console.log(`Item "${itemName}" has been ended`);
+            this.renderCategoryItems(sortedItems);
+        }
+        
+        // If we're viewing ended items, refresh that view
+        if (this.currentView === 'ended') {
+            this.renderEndedItems();
         }
     }
 

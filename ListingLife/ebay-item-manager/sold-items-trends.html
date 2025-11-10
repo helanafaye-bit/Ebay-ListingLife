@@ -16,6 +16,7 @@
             <button class="menu-btn" data-nav-target="listinglife">ListingLife</button>
             <button class="menu-btn" data-nav-target="ended">Items Ended</button>
             <button class="menu-btn menu-btn-active" data-nav-target="sold">Sold Items Trends</button>
+            <button class="menu-btn" data-nav-target="settings">Settings</button>
         </div>
     </nav>
     <div class="container trends-page">
@@ -36,6 +37,7 @@
                 <div class="data-period-controls">
                     <select id="dataPeriodSelect" aria-label="Select data period"></select>
                     <button type="button" id="addDataPeriodBtn" class="btn btn-secondary btn-small">Add Period</button>
+                    <button type="button" id="removeDataPeriodBtn" class="btn btn-danger btn-small">Remove Period</button>
                 </div>
             </div>
             <div class="data-period-display" id="dataPeriodDisplay" aria-live="polite">
@@ -116,6 +118,25 @@
                 <button type="button" class="btn btn-secondary" data-close-modal="soldSubcategoryItemsModal">Cancel</button>
                 <button type="button" id="saveSoldSubcategoryItemsBtn" class="btn btn-primary">Save Items</button>
             </div>
+        </div>
+    </div>
+
+    <div id="soldConfirmModal" class="modal confirm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="soldConfirmTitle">
+        <div class="modal-content sold-confirm-modal">
+            <span class="close" data-close-modal="soldConfirmModal" aria-label="Close confirmation">&times;</span>
+            <h2 id="soldConfirmTitle">Confirm Action</h2>
+            <p id="soldConfirmMessage" class="confirm-message"></p>
+            <div class="modal-actions">
+                <button type="button" id="soldConfirmCancel" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="soldConfirmAccept" class="btn btn-danger">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="soldAppNotification" class="app-notification" role="alert" aria-live="assertive" aria-hidden="true">
+        <div class="notification-content">
+            <span id="soldAppNotificationMessage"></span>
+            <button id="soldAppNotificationClose" class="notification-close" aria-label="Close notification">&times;</button>
         </div>
     </div>
 
