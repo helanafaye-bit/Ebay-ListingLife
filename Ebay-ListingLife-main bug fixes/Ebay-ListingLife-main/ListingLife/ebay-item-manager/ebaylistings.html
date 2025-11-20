@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ListingLife</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="site-top-border">
+        <a href="index.html" style="display: inline-block; cursor: pointer;">
+            <img src="assets/listinglife-logo.png" alt="ListingLife logo">
+        </a>
+    </div>
+    <nav class="sidebar-nav">
+        <div class="sidebar-buttons">
+            <button class="menu-btn" data-nav-target="home">Home</button>
+            <button class="menu-btn menu-btn-active" data-nav-target="listinglife">ListingLife</button>
+            <button class="menu-btn" data-nav-target="ended">Items Ended</button>
+            <button class="menu-btn" data-nav-target="sold">Sold Items Trends</button>
+            <button class="menu-btn" data-nav-target="settings">Settings</button>
+        </div>
+    </nav>
+    <div class="container">
+        <header>
+            <h1>ListingLife</h1>
+            <div class="search-container">
+                <input type="text" id="searchBar" placeholder="Search items... (e.g., 'Glass plate')">
+                <button id="searchBtn">Search</button>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <main class="main-content">
+                <div class="add-section">
+                    <button id="addCategoryBtn" class="btn btn-primary">Add New Category</button>
+                    <button id="addItemBtn" class="btn btn-secondary">Add New Item</button>
+                </div>
+
+                <div id="categoriesContainer">
+                    <!-- Categories will be dynamically added here -->
+                </div>
+
+                <div id="categoryItemsContainer" style="display: none;">
+                    <div class="category-items-header">
+                        <button id="backToCategories" class="btn btn-secondary">← Back to Categories</button>
+                        <div class="category-title-section">
+                            <h2 id="currentCategoryTitle"></h2>
+                            <div class="sort-dropdown">
+                                <select id="categorySortSelect">
+                                    <option value="newest">Newest First</option>
+                                    <option value="oldest">Oldest First</option>
+                                    <option value="lowest-days">Lowest Days Left</option>
+                                    <option value="highest-days">Highest Days Left</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="categoryDurationInfo" class="category-duration-display">
+                            <span id="categoryAverageDisplay">Average: <strong id="categoryAverageValue">30</strong> days</span>
+                        </div>
+                    </div>
+                    <div class="floating-add-btn-wrapper">
+                        <button id="floatingAddItemBtn" type="button" class="btn btn-secondary floating-add-btn" aria-label="Add new item in this category">
+                            <span class="floating-add-icon">＋</span>
+                            <span>Add New Item</span>
+                        </button>
+                    </div>
+                    <div id="categoryItemsList">
+                        <!-- Items for selected category will be shown here -->
+                    </div>
+                </div>
+
+                <div id="endedItemsContainer" style="display: none;">
+                    <div class="category-items-header">
+                        <button id="backToCategoriesFromEnded" class="btn btn-secondary">← Back to Categories</button>
+                        <div class="category-title-section">
+                            <h2>Items Ended (0 Days Left)</h2>
+                        </div>
+                    </div>
+                    <div id="endedItemsList">
+                        <!-- Ended items will be shown here -->
+                    </div>
+                </div>
+            </main>
+
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <h3 id="sidebarTitle">Recently Added Items</h3>
+                        <div class="sidebar-toggle">
+                            <button id="recentToggle" class="toggle-btn active">Recent</button>
+                            <button id="endingToggle" class="toggle-btn">Ending Soon</button>
+                        </div>
+                    </div>
+                    <div id="urgentItemsList">
+                        <!-- Items will be shown here based on toggle selection -->
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Modal for adding/editing categories -->
+        <div id="categoryModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="categoryModalTitle">Add New Category</h2>
+                <form id="categoryForm">
+                    <label for="categoryName">Title</label>
+                    <input type="text" id="categoryName" placeholder="Category name (e.g., Fragile Items)" required>
+                    <label for="categoryDescription">Description</label>
+                    <textarea id="categoryDescription" placeholder="Describe this category..." rows="2"></textarea>
+                    <label for="categoryAverageDays">Average Days</label>
+                    <input type="number" id="categoryAverageDays" placeholder="Enter average days for this category" min="1" required>
+                    <button type="submit" class="btn btn-primary">Save Category</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal for adding/editing items -->
+        <div id="itemModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="itemModalTitle">Add New Item</h2>
+                <form id="itemForm">
+                    <label for="itemCategory">Select Category</label>
+                    <select id="itemCategory" required>
+                        <option value="">Select Category</option>
+                    </select>
+                    
+                    <label for="itemName">Item Name</label>
+                    <input type="text" id="itemName" placeholder="Item name (e.g., Big Glass thing)" required>
+                    
+                    <label for="itemDescription">Description of the item</label>
+                    <textarea id="itemDescription" placeholder="Enter detailed description of the item..." rows="3"></textarea>
+                    
+                    <label for="itemNote">Note for the item</label>
+                    <textarea id="itemNote" placeholder="Add any additional notes about this item..." rows="2"></textarea>
+                    
+                    <label for="itemDateAdded">Date added of the item</label>
+                    <input type="date" id="itemDateAdded" required>
+                    
+                    <label for="itemEndDate">End date</label>
+                    <input type="date" id="itemEndDate" required>
+                    <div id="endDateSuggestion" class="field-hint"></div>
+                    
+                    <label for="itemPhoto">Image URL</label>
+                    <input type="url" id="itemPhoto" placeholder="Paste image URL (e.g., from eBay listing or Google Images)" oninput="app.previewPictureNew(this.value)">
+                    
+                    <div id="itemPhotoPreview" class="picture-preview" style="display: none;">
+                        <img id="previewImageNew" src="" alt="Item preview">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Save Item</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal for editing category average days -->
+        <div id="categoryAverageModal" class="modal">
+            <div class="modal-content">
+                <span class="close" data-close-modal="categoryAverageModal">&times;</span>
+                <h2>Edit Average Days</h2>
+                <form id="categoryAverageForm">
+                    <input type="hidden" id="categoryAverageId">
+                    <label for="categoryAverageInput">Average Days</label>
+                    <input type="number" id="categoryAverageInput" min="1" required>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" data-close-modal="categoryAverageModal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal for item details (notes/pictures) -->
+        <div id="itemDetailModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="itemDetailModalTitle">Item Details</h2>
+                <form id="itemDetailForm">
+                    <label for="itemDetailName">Item Name</label>
+                    <input type="text" id="itemDetailName" readonly>
+                    
+                    <label for="itemDetailCategory">Category</label>
+                    <input type="text" id="itemDetailCategory" readonly>
+                    
+                    <label for="itemDetailDescription">Description</label>
+                    <textarea id="itemDetailDescription" readonly rows="3"></textarea>
+                    
+                    <label for="itemDetailNote">Note</label>
+                    <textarea id="itemDetailNote" placeholder="Add notes about this item..." rows="2"></textarea>
+                    
+                    <label for="itemDetailDateAdded">Date Added</label>
+                    <input type="text" id="itemDetailDateAdded" readonly>
+                    
+                    <label for="itemDetailPicture">Picture URL</label>
+                    <input type="url" id="itemDetailPicture" placeholder="Paste image URL (e.g., from eBay listing or Google Images)" oninput="app.previewPicture(this.value)">
+                    
+                    <div id="itemPicturePreview" class="picture-preview" style="display: none;">
+                        <img id="previewImage" src="" alt="Item preview">
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeModals()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Simple View Modal for displaying item information -->
+        <div id="viewModal" class="modal">
+            <div class="modal-content view-modal-content">
+                <span class="close">&times;</span>
+                <h2 id="viewModalTitle">Item Details</h2>
+                <div class="view-content">
+                    <div class="view-photo-section">
+                        <img id="viewImage" src="" alt="Item photo" style="display: none;">
+                        <div id="viewNoPhoto" class="no-photo-placeholder" style="display: none;">
+                            <span>📷</span>
+                            <p>No photo available</p>
+                        </div>
+                    </div>
+                    <div class="view-info-section">
+                        <div class="view-field">
+                            <label>Item Name:</label>
+                            <span id="viewName"></span>
+                        </div>
+                        <div class="view-field">
+                            <label>Category:</label>
+                            <span id="viewCategory"></span>
+                        </div>
+                        <div class="view-field">
+                            <label>Description:</label>
+                            <div id="viewDescription" class="view-text"></div>
+                        </div>
+                        <div class="view-field">
+                            <label>Notes:</label>
+                            <div id="viewNote" class="view-text"></div>
+                        </div>
+                        <div class="view-field">
+                            <label>Date Added:</label>
+                            <span id="viewDateAdded"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeViewModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="listingConfirmModal" class="modal confirm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="listingConfirmTitle">
+        <div class="modal-content listing-confirm-modal">
+            <span class="close" id="listingConfirmClose" aria-label="Close confirmation">&times;</span>
+            <h2 id="listingConfirmTitle">Duplicate Listing</h2>
+            <p id="listingConfirmMessage" class="confirm-message">This listing already exists.</p>
+            <div class="modal-actions">
+                <button type="button" id="listingConfirmCancel" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="listingConfirmProceed" class="btn btn-primary">Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for marking item as sold -->
+    <div id="soldItemModal" class="modal">
+        <div class="modal-content">
+            <span class="close" data-close-modal="soldItemModal">&times;</span>
+            <h2>Mark Item as Sold</h2>
+            <form id="soldItemForm">
+                <label for="soldItemCategory">Select Category</label>
+                <div style="display: flex; gap: 8px; align-items: flex-end;">
+                    <select id="soldItemCategory" style="flex: 1;" required>
+                        <option value="">Select a category...</option>
+                    </select>
+                    <button type="button" id="createCategoryBtn" class="btn btn-secondary btn-small">Create New</button>
+                </div>
+                <div id="newCategoryContainer" style="display: none; margin-top: 8px;">
+                    <input type="text" id="newCategoryName" placeholder="Enter new category name" style="width: 100%; padding: 8px;">
+                    <textarea id="newCategoryDescription" placeholder="Description (optional)" rows="2" style="width: 100%; padding: 8px; margin-top: 8px;"></textarea>
+                </div>
+                
+                <label for="soldItemSubcategory">Select Subcategory</label>
+                <div style="display: flex; gap: 8px; align-items: flex-end;">
+                    <select id="soldItemSubcategory" style="flex: 1;" required>
+                        <option value="">Select a subcategory...</option>
+                    </select>
+                    <button type="button" id="createSubcategoryBtn" class="btn btn-secondary btn-small">Create New</button>
+                </div>
+                <div id="newSubcategoryContainer" style="display: none; margin-top: 8px;">
+                    <input type="text" id="newSubcategoryName" placeholder="Enter new subcategory name" style="width: 100%; padding: 8px;">
+                </div>
+                
+                <label for="soldItemPrice">Price Sold At</label>
+                <input type="number" id="soldItemPrice" min="0" step="0.01" placeholder="e.g., 19.99" required>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-close-modal="soldItemModal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Mark as Sold</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="appNotification" class="app-notification" role="alert" aria-live="assertive" aria-hidden="true">
+        <div class="notification-content">
+            <span id="appNotificationMessage"></span>
+            <button id="appNotificationClose" class="notification-close" aria-label="Close notification">&times;</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
