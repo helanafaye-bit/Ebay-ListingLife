@@ -62,6 +62,7 @@ class SoldItemsTrends {
         this.soldSearchBar = document.getElementById('soldSearchBar');
         this.soldSearchBtn = document.getElementById('soldSearchBtn');
         this.soldSearchResults = document.getElementById('soldSearchResults');
+        this.trendingKeywordsList = document.getElementById('trendingKeywordsList');
         this.init();
     }
 
@@ -73,6 +74,7 @@ class SoldItemsTrends {
         this.renderDataPeriod();
         this.renderCategories();
         this.updateRemovePeriodButtonState();
+        this.renderTrendingKeywords();
     }
 
     setupEventListeners() {
@@ -480,6 +482,7 @@ class SoldItemsTrends {
 
         this.updateSubcategoryRowFromItems(this.currentSubcategoryRow, items);
         this.closeModal('soldSubcategoryItemsModal');
+        this.renderTrendingKeywords();
     }
 
     openMoveItemModal(itemId, itemRow) {
@@ -740,6 +743,7 @@ class SoldItemsTrends {
         this.currentMovingSubcategory = null;
 
         this.showNotification('Item moved successfully.', 'success');
+        this.renderTrendingKeywords();
     }
 
     collectSubcategoryItemsFromEditor() {
@@ -905,6 +909,7 @@ class SoldItemsTrends {
         this.touchCurrentPeriod(timestamp);
         this.saveData();
         this.renderCategories();
+        this.renderTrendingKeywords();
         this.closeModal('soldCategoryModal');
     }
 
@@ -1070,6 +1075,81 @@ class SoldItemsTrends {
         });
 
         container.innerHTML = html;
+        // Update trending keywords after rendering categories
+        this.renderTrendingKeywords();
+    }
+
+    renderTrendingKeywords() {
+        if (!this.trendingKeywordsList) return;
+
+        const period = this.getCurrentPeriod();
+        if (!period || !period.categories) {
+            this.trendingKeywordsList.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No data available</p>';
+            return;
+        }
+
+        // Collect all items from all subcategories
+        const keywordCounts = new Map();
+        
+        period.categories.forEach(category => {
+            if (category.subcategories) {
+                category.subcategories.forEach(subcategory => {
+                    if (subcategory.items) {
+                        const normalizedItems = this.normalizeSubcategoryItems(subcategory.items);
+                        normalizedItems.forEach(item => {
+                            const label = item.label || '';
+                            if (label.trim()) {
+                                // Extract keywords from the label
+                                // Split by common separators and extract meaningful words
+                                const words = label.toLowerCase()
+                                    .split(/[\s,\-_\/\(\)]+/)
+                                    .filter(word => word.length >= 2) // Filter out very short words
+                                    .filter(word => !/^\d+$/.test(word)); // Filter out pure numbers
+                                
+                                words.forEach(word => {
+                                    const count = keywordCounts.get(word) || 0;
+                                    keywordCounts.set(word, count + 1);
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        });
+
+        if (keywordCounts.size === 0) {
+            this.trendingKeywordsList.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No keywords found</p>';
+            return;
+        }
+
+        // Sort by count (descending) and get top keywords
+        const sortedKeywords = Array.from(keywordCounts.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 50); // Show top 50 keywords
+
+        let html = '';
+        sortedKeywords.forEach(([keyword, count]) => {
+            const capitalizedKeyword = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+            html += `
+                <div class="trending-keyword-item" data-keyword="${this.escapeHtml(keyword)}">
+                    <span class="trending-keyword-name">${this.escapeHtml(capitalizedKeyword)}</span>
+                    <span class="trending-keyword-count">${count}</span>
+                </div>
+            `;
+        });
+
+        this.trendingKeywordsList.innerHTML = html;
+
+        // Add click handlers to search for the keyword
+        this.trendingKeywordsList.querySelectorAll('.trending-keyword-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const keyword = item.dataset.keyword;
+                if (this.soldSearchBar) {
+                    this.soldSearchBar.value = keyword;
+                    this.searchSoldItems();
+                }
+            });
+        });
     }
 
     saveData() {
@@ -1379,6 +1459,7 @@ class SoldItemsTrends {
             this.updatePeriodSelect();
             this.renderDataPeriod();
             this.renderCategories();
+            this.renderTrendingKeywords();
             this.saveData();
             return;
         }
@@ -1388,6 +1469,7 @@ class SoldItemsTrends {
         this.updatePeriodSelect();
         this.renderDataPeriod();
         this.renderCategories();
+        this.renderTrendingKeywords();
         this.saveData();
     }
 

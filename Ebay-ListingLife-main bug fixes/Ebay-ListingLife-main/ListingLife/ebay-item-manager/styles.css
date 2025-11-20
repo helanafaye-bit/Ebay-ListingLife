@@ -331,6 +331,101 @@ body {
     font-size: 1rem;
 }
 
+.trends-content-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+    align-items: start;
+}
+
+.trends-main-content {
+    min-width: 0;
+}
+
+.trending-keywords-sidebar {
+    position: sticky;
+    top: calc(var(--site-top-border-height) + 20px);
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    max-height: calc(100vh - var(--site-top-border-height) - 40px);
+    overflow-y: auto;
+}
+
+.trending-keywords-header {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+}
+
+.trending-keywords-header h2 {
+    font-size: 1.4rem;
+    color: #1f2937;
+    margin-bottom: 6px;
+}
+
+.trending-keywords-subtitle {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin: 0;
+}
+
+.trending-keywords-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.trending-keyword-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: #f9fafb;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.trending-keyword-item:hover {
+    background: #f3f4f6;
+    border-color: #0064d3;
+    transform: translateX(3px);
+}
+
+.trending-keyword-name {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 0.95rem;
+    flex: 1;
+    word-break: break-word;
+}
+
+.trending-keyword-count {
+    background: #0064d3;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-left: 10px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 1200px) {
+    .trends-content-wrapper {
+        grid-template-columns: 1fr;
+    }
+    
+    .trending-keywords-sidebar {
+        position: relative;
+        top: 0;
+        max-height: none;
+    }
+}
+
 .settings-body {
     background: #f3f4f6;
 }

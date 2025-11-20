@@ -1538,6 +1538,8 @@ class EbayListingLife {
     showCategoriesView() {
         this.currentView = 'categories';
         this.selectedCategoryId = null;
+        this.previousView = 'categories';
+        this.previousCategoryId = null;
         document.getElementById('categoriesContainer').style.display = 'block';
         document.getElementById('categoryItemsContainer').style.display = 'none';
         document.getElementById('endedItemsContainer').style.display = 'none';
@@ -1560,6 +1562,8 @@ class EbayListingLife {
     showCategoryItems(categoryId) {
         this.currentView = 'items';
         this.selectedCategoryId = categoryId;
+        this.previousView = 'items';
+        this.previousCategoryId = categoryId;
         document.getElementById('categoriesContainer').style.display = 'none';
         document.getElementById('categoryItemsContainer').style.display = 'block';
         document.getElementById('endedItemsContainer').style.display = 'none';
@@ -1712,8 +1716,22 @@ class EbayListingLife {
         const searchTerm = document.getElementById('searchBar').value.trim().toLowerCase();
         
         if (!searchTerm) {
-            this.showCategoriesView();
+            // Restore previous view
+            if (this.previousView === 'items' && this.previousCategoryId) {
+                this.showCategoryItems(this.previousCategoryId);
+            } else {
+                this.showCategoriesView();
+            }
             return;
+        }
+
+        // Store current view before showing search results
+        if (this.currentView === 'items' && this.selectedCategoryId) {
+            this.previousView = 'items';
+            this.previousCategoryId = this.selectedCategoryId;
+        } else if (this.currentView === 'categories') {
+            this.previousView = 'categories';
+            this.previousCategoryId = null;
         }
 
         const matchingItems = this.items.filter(item => 
@@ -1728,14 +1746,24 @@ class EbayListingLife {
     }
 
     renderSearchResults(searchTerm, matchingItems) {
-        const container = document.getElementById('categoriesContainer');
+        const categoriesContainer = document.getElementById('categoriesContainer');
+        const categoryItemsContainer = document.getElementById('categoryItemsContainer');
+        
+        // Hide category items view and show categories container for search results
+        if (categoryItemsContainer) {
+            categoryItemsContainer.style.display = 'none';
+        }
+        if (categoriesContainer) {
+            categoriesContainer.style.display = 'block';
+        }
         
         if (matchingItems.length === 0) {
-            container.innerHTML = `
+            categoriesContainer.innerHTML = `
                 <div class="search-results">
                     <h3>No items found for "${searchTerm}"</h3>
                 </div>
             `;
+            this.currentView = 'search';
             return;
         }
 
@@ -1769,8 +1797,8 @@ class EbayListingLife {
             </div>
         `;
 
-        container.innerHTML = html;
-        document.getElementById('categoryItemsContainer').style.display = 'none';
+        categoriesContainer.innerHTML = html;
+        this.currentView = 'search';
     }
 
     highlightSearchTerm(text, searchTerm) {
