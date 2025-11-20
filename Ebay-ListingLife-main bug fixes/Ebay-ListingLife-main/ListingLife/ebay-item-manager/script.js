@@ -192,6 +192,8 @@ class EbayListingLife {
         this.addListenerById('searchBar', 'keypress', (e) => {
             if (e.key === 'Enter') this.searchItems();
         });
+        // Real-time search as you type
+        this.addListenerById('searchBar', 'input', () => this.searchItems());
 
         // Navigation buttons in the sidebar menu
         document.querySelectorAll('.menu-btn[data-nav-target]').forEach(btn => {
@@ -1078,7 +1080,8 @@ class EbayListingLife {
         if (!categorySelect) return;
 
         // Load sold trends data
-        const soldData = localStorage.getItem('SoldItemsTrends');
+        const soldDataKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+        const soldData = localStorage.getItem(soldDataKey);
         if (!soldData) {
             categorySelect.innerHTML = '<option value="">No categories found. Create a new category below.</option>';
             categorySelect.disabled = false;
@@ -1353,7 +1356,8 @@ class EbayListingLife {
         }
 
         // Load sold trends data
-        let soldData = localStorage.getItem('SoldItemsTrends');
+        const soldDataKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+        let soldData = localStorage.getItem(soldDataKey);
         let data;
         
         try {
@@ -1481,7 +1485,8 @@ class EbayListingLife {
             // Save back to localStorage
             data.periods = periods;
             data.currentPeriodId = currentPeriod.id;
-            localStorage.setItem('SoldItemsTrends', JSON.stringify(data));
+            const soldDataKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+            localStorage.setItem(soldDataKey, JSON.stringify(data));
 
             // Mark the item as sold (end it)
             this.currentSoldItem.manuallyEnded = true;
@@ -2387,8 +2392,11 @@ class EbayListingLife {
             const jsonString = JSON.stringify(data);
             const dataSizeKB = (jsonString.length * 2) / 1024; // Approximate size in KB (UTF-16)
             
+            // Get store-specific key
+            const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('EbayListingLife') : 'EbayListingLife';
+            
             // Attempt to save - browser will throw QuotaExceededError if limit reached
-            localStorage.setItem('EbayListingLife', jsonString);
+            localStorage.setItem(storageKey, jsonString);
             console.log(`Data saved successfully. Size: ${Math.round(dataSizeKB)}KB`);
         } catch (error) {
             console.error('Error in saveData:', error);
@@ -2412,8 +2420,14 @@ class EbayListingLife {
     }
 
     loadData() {
-        // Try to load from new key first, then fall back to old key for backward compatibility
-        let savedData = localStorage.getItem('EbayListingLife');
+        // Get store-specific key
+        const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('EbayListingLife') : 'EbayListingLife';
+        
+        // Try to load from store-specific key first, then fall back to old keys for backward compatibility
+        let savedData = localStorage.getItem(storageKey);
+        if (!savedData) {
+            savedData = localStorage.getItem('EbayListingLife');
+        }
         if (!savedData) {
             savedData = localStorage.getItem('eBayItemManager');
         }
@@ -2423,10 +2437,13 @@ class EbayListingLife {
             this.categories = data.categories || [];
             this.items = data.items || [];
             
-            // If we loaded from old key, migrate to new key
-            if (localStorage.getItem('eBayItemManager') && !localStorage.getItem('EbayListingLife')) {
+            // If we loaded from old key, migrate to store-specific key
+            if ((localStorage.getItem('eBayItemManager') || localStorage.getItem('EbayListingLife')) && !localStorage.getItem(storageKey)) {
                 this.saveData();
-                localStorage.removeItem('eBayItemManager'); // Clean up old key
+                // Only remove old key if we're using store manager (to avoid breaking non-store data)
+                if (window.storeManager && localStorage.getItem('eBayItemManager')) {
+                    localStorage.removeItem('eBayItemManager'); // Clean up old key
+                }
             }
         } else {
             // Add some sample data for demonstration
@@ -2534,10 +2551,22 @@ class EbayListingLife {
 }
 
 // Initialize the app
-const app = new EbayListingLife();
-
-// Make sure app is available globally
-window.app = app;
+// Wait for DOM and store manager to be ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        // Wait a tick to ensure storeManager is initialized
+        setTimeout(() => {
+            const app = new EbayListingLife();
+            window.app = app;
+        }, 0);
+    });
+} else {
+    // DOM already loaded, wait a tick for storeManager
+    setTimeout(() => {
+        const app = new EbayListingLife();
+        window.app = app;
+    }, 0);
+}
 
 // Create global functions for onclick handlers
 window.closeViewModal = function() {

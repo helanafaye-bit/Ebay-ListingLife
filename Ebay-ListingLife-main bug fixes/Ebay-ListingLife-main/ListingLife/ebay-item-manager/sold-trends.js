@@ -59,6 +59,9 @@ class SoldItemsTrends {
         this.moveItemForm = document.getElementById('moveItemForm');
         this.moveItemCategorySelect = document.getElementById('moveItemCategory');
         this.moveItemSubcategorySelect = document.getElementById('moveItemSubcategory');
+        this.soldSearchBar = document.getElementById('soldSearchBar');
+        this.soldSearchBtn = document.getElementById('soldSearchBtn');
+        this.soldSearchResults = document.getElementById('soldSearchResults');
         this.init();
     }
 
@@ -186,6 +189,23 @@ class SoldItemsTrends {
 
         if (this.moveItemForm) {
             this.moveItemForm.addEventListener('submit', (e) => this.handleMoveItemSubmit(e));
+        }
+
+        // Search functionality
+        if (this.soldSearchBtn) {
+            this.soldSearchBtn.addEventListener('click', () => this.searchSoldItems());
+        }
+
+        if (this.soldSearchBar) {
+            this.soldSearchBar.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.searchSoldItems();
+                }
+            });
+            // Search as you type
+            this.soldSearchBar.addEventListener('input', () => {
+                this.searchSoldItems();
+            });
         }
 
         if (this.moveItemCategorySelect) {
@@ -1053,7 +1073,8 @@ class SoldItemsTrends {
     }
 
     saveData() {
-        localStorage.setItem('SoldItemsTrends', JSON.stringify({
+        const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+        localStorage.setItem(storageKey, JSON.stringify({
             periods: this.periods,
             currentPeriodId: this.currentPeriodId
         }));
@@ -1263,7 +1284,8 @@ class SoldItemsTrends {
     }
 
     loadData() {
-        const saved = localStorage.getItem('SoldItemsTrends');
+        const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+        const saved = localStorage.getItem(storageKey);
         if (saved) {
             try {
                 const data = JSON.parse(saved);
@@ -1547,6 +1569,197 @@ class SoldItemsTrends {
             this.currencyConfig = this.loadCurrencyConfig();
         }
         return this.currencyConfig;
+    }
+
+    searchSoldItems() {
+        if (!this.soldSearchBar || !this.soldSearchResults) return;
+
+        const searchTerm = this.soldSearchBar.value.trim().toLowerCase();
+        
+        if (!searchTerm) {
+            this.soldSearchResults.style.display = 'none';
+            const categoriesContainer = document.getElementById('soldCategoriesContainer');
+            if (categoriesContainer) {
+                categoriesContainer.style.display = 'grid';
+            }
+            return;
+        }
+
+        // Search through all items in all periods
+        const matchingItems = [];
+        const period = this.getCurrentPeriod();
+        
+        if (period && period.categories) {
+            period.categories.forEach(category => {
+                if (category.subcategories) {
+                    category.subcategories.forEach(subcategory => {
+                        if (subcategory.items) {
+                            const normalizedItems = this.normalizeSubcategoryItems(subcategory.items);
+                            normalizedItems.forEach(item => {
+                                const itemLabel = (item.label || '').toLowerCase();
+                                if (itemLabel.includes(searchTerm)) {
+                                    matchingItems.push({
+                                        item: item,
+                                        category: category,
+                                        subcategory: subcategory,
+                                        period: period
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        this.renderSoldSearchResults(searchTerm, matchingItems);
+    }
+
+    renderSoldSearchResults(searchTerm, matchingItems) {
+        if (!this.soldSearchResults) return;
+
+        // Hide categories container
+        const categoriesContainer = document.getElementById('soldCategoriesContainer');
+        if (categoriesContainer) {
+            categoriesContainer.style.display = 'none';
+        }
+
+        if (matchingItems.length === 0) {
+            this.soldSearchResults.innerHTML = `
+                <div class="search-results">
+                    <h3>No items found for "${searchTerm}"</h3>
+                </div>
+            `;
+            this.soldSearchResults.style.display = 'block';
+            return;
+        }
+
+        const currency = this.currencyConfig || SOLD_TRENDS_CURRENCY_MAP[SOLD_TRENDS_DEFAULT_CURRENCY];
+        
+        let html = `
+            <div class="search-results">
+                <h3>Search Results for "${searchTerm}" (${matchingItems.length} items found)</h3>
+                <div class="items-list">
+        `;
+
+        matchingItems.forEach(({ item, category, subcategory, period }) => {
+            const itemLabel = item.label || 'Unnamed Item';
+            const itemPrice = item.price || 0;
+            const formattedPrice = new Intl.NumberFormat(currency.locale, {
+                style: 'currency',
+                currency: currency.code
+            }).format(itemPrice);
+            
+            html += `
+                <div class="item item-clickable sold-search-result" 
+                     data-category-id="${category.id}" 
+                     data-subcategory-id="${subcategory.id}"
+                     data-item-id="${item.id}"
+                     data-period-id="${period.id}">
+                    <div class="item-info">
+                        <div class="item-name">${this.highlightSearchTerm(itemLabel, searchTerm)}</div>
+                        <div class="item-date">Period: ${period.name || 'Default'} | Category: ${category.name || 'Unknown'} | Subcategory: ${subcategory.name || 'Unknown'} | Price: ${formattedPrice}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+
+        this.soldSearchResults.innerHTML = html;
+        this.soldSearchResults.style.display = 'block';
+
+        // Add click handlers to navigate to item location
+        this.soldSearchResults.querySelectorAll('.sold-search-result').forEach(result => {
+            result.addEventListener('click', () => {
+                this.navigateToSoldItem(
+                    result.dataset.periodId,
+                    result.dataset.categoryId,
+                    result.dataset.subcategoryId,
+                    result.dataset.itemId
+                );
+            });
+        });
+    }
+
+    navigateToSoldItem(periodId, categoryId, subcategoryId, itemId) {
+        // Switch to the correct period if needed
+        if (periodId && this.currentPeriodId !== periodId) {
+            this.setCurrentPeriod(periodId);
+            // Wait for period to switch and categories to render
+            setTimeout(() => {
+                this.openSubcategoryItemsModalForItem(categoryId, subcategoryId, itemId);
+            }, 200);
+        } else {
+            this.openSubcategoryItemsModalForItem(categoryId, subcategoryId, itemId);
+        }
+    }
+
+    openSubcategoryItemsModalForItem(categoryId, subcategoryId, itemId) {
+        const period = this.getCurrentPeriod();
+        if (!period) return;
+
+        // Find the category
+        const category = period.categories.find(cat => cat.id === categoryId);
+        if (!category) {
+            // If category not found, open category modal first
+            this.openCategoryModal(category);
+            return;
+        }
+
+        // Find the subcategory
+        const subcategory = category.subcategories.find(sub => sub.id === subcategoryId);
+        if (!subcategory) return;
+
+        // Open the category modal to show subcategories
+        this.openCategoryModal(category);
+
+        // Wait for modal to open and find the subcategory row
+        setTimeout(() => {
+            const subcategoryRows = this.subcategoryEditorEl.querySelectorAll('.subcategory-editor-row');
+            let targetSubcategoryRow = null;
+
+            subcategoryRows.forEach(row => {
+                if (row.dataset.subcategoryId === subcategoryId) {
+                    targetSubcategoryRow = row;
+                }
+            });
+
+            if (targetSubcategoryRow) {
+                // Click the manage button to open items modal
+                const manageBtn = targetSubcategoryRow.querySelector('.subcategory-manage-btn');
+                if (manageBtn) {
+                    manageBtn.click();
+                    
+                    // After modal opens, scroll to and highlight the item
+                    setTimeout(() => {
+                        const itemRow = this.subcategoryItemsList.querySelector(`[data-item-id="${itemId}"]`);
+                        if (itemRow) {
+                            itemRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            itemRow.style.backgroundColor = '#fff3cd';
+                            itemRow.style.transition = 'background-color 0.3s';
+                            
+                            // Remove highlight after 3 seconds
+                            setTimeout(() => {
+                                itemRow.style.backgroundColor = '';
+                            }, 3000);
+                        }
+                    }, 300);
+                }
+            }
+        }, 100);
+    }
+
+    highlightSearchTerm(text, searchTerm) {
+        const regex = new RegExp(`(${this.escapeRegex(searchTerm)})`, 'gi');
+        return text.replace(regex, '<span class="highlight">$1</span>');
+    }
+
+    escapeRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     loadCurrencyConfig() {

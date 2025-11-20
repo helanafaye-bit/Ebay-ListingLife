@@ -88,7 +88,8 @@ class ListingLifeSettingsPage {
 
     loadSettings() {
         try {
-            const raw = localStorage.getItem(this.SETTINGS_KEY);
+            const storageKey = window.storeManager ? window.storeManager.getStoreDataKey(this.SETTINGS_KEY) : this.SETTINGS_KEY;
+            const raw = localStorage.getItem(storageKey);
             return raw ? JSON.parse(raw) : {};
         } catch (error) {
             console.warn('Unable to parse settings; using defaults.', error);
@@ -100,7 +101,8 @@ class ListingLifeSettingsPage {
         const current = this.loadSettings();
         const updated = { ...current, ...patch };
         try {
-            localStorage.setItem(this.SETTINGS_KEY, JSON.stringify(updated));
+            const storageKey = window.storeManager ? window.storeManager.getStoreDataKey(this.SETTINGS_KEY) : this.SETTINGS_KEY;
+            localStorage.setItem(storageKey, JSON.stringify(updated));
         } catch (error) {
             console.error('Failed to save settings.', error);
             this.renderStatus('Unable to save settings. Please check browser storage permissions.');
