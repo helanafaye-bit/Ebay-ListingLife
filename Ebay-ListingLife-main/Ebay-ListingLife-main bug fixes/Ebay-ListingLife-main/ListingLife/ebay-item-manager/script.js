@@ -40,27 +40,37 @@ class EbayListingLife {
     init() {
         this.setupUiHelpers();
         // Ensure storeManager is available before loading data
-        if (!window.storeManager) {
-            // Wait a bit more for storeManager to initialize
-            setTimeout(() => {
-                this.loadData();
-                this.setupEventListeners();
-                this.renderCategories();
-                this.updateCategorySelect();
-                this.updateUrgentItems();
-                this.handleInitialView();
-            }, 100);
-        } else {
+        const initializeApp = () => {
             this.loadData();
             this.setupEventListeners();
             this.renderCategories();
             this.updateCategorySelect();
             this.updateUrgentItems();
             this.handleInitialView();
-        }
+            console.log('EbayListingLife initialized successfully');
+        };
         
-        // Test if JavaScript is working
-        console.log('EbayListingLife initialized successfully');
+        if (!window.storeManager) {
+            // Wait for storeManager to initialize - check multiple times
+            let attempts = 0;
+            const maxAttempts = 10;
+            const checkStoreManager = () => {
+                if (window.storeManager) {
+                    console.log('storeManager found after', attempts * 50, 'ms');
+                    initializeApp();
+                } else if (attempts < maxAttempts) {
+                    attempts++;
+                    setTimeout(checkStoreManager, 50);
+                } else {
+                    console.warn('storeManager not found after', maxAttempts * 50, 'ms, proceeding anyway');
+                    initializeApp();
+                }
+            };
+            checkStoreManager();
+        } else {
+            initializeApp();
+        }
+    }
         
         // Add a simple test click handler
         setTimeout(() => {
@@ -2484,25 +2494,81 @@ class EbayListingLife {
     }
 
     loadData() {
+        console.log('Loading data...');
+        console.log('storeManager available:', !!window.storeManager);
+        
         // Get store-specific key
-        const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('EbayListingLife') : 'EbayListingLife';
+        let storageKey = 'EbayListingLife';
+        if (window.storeManager) {
+            try {
+                storageKey = window.storeManager.getStoreDataKey('EbayListingLife');
+            } catch (err) {
+                console.warn('Error getting store data key, using default:', err);
+            }
+        }
+        console.log('Storage key:', storageKey);
         
         // Try to load from store-specific key first, then fall back to old keys for backward compatibility
-        let savedData = localStorage.getItem(storageKey);
+        let savedData = null;
         let loadedFromOldKey = false;
         let oldKeyUsed = null;
         
+        // Strategy: Check store-specific key first, but ALWAYS check old keys as fallback
+        // This ensures backward compatibility even if store system creates new default store
+        
+        // First, try store-specific key (if storeManager exists)
+        if (window.storeManager && storageKey !== 'EbayListingLife') {
+            savedData = localStorage.getItem(storageKey);
+            console.log('Data in store-specific key:', !!savedData);
+        }
+        
+        // Always check old keys (critical for backward compatibility)
         if (!savedData) {
-            // Try old keys in order of preference
-            savedData = localStorage.getItem('EbayListingLife');
-            if (savedData) {
-                loadedFromOldKey = true;
-                oldKeyUsed = 'EbayListingLife';
-            } else {
-                savedData = localStorage.getItem('eBayItemManager');
-                if (savedData) {
-                    loadedFromOldKey = true;
-                    oldKeyUsed = 'eBayItemManager';
+            const oldKeys = ['EbayListingLife', 'eBayItemManager'];
+            for (const oldKey of oldKeys) {
+                const data = localStorage.getItem(oldKey);
+                if (data) {
+                    // Verify it's valid data structure
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.categories !== undefined || parsed.items !== undefined) {
+                            savedData = data;
+                            loadedFromOldKey = true;
+                            oldKeyUsed = oldKey;
+                            console.log('Found data in old key:', oldKey, `(${parsed.categories?.length || 0} categories, ${parsed.items?.length || 0} items)`);
+                            break;
+                        }
+                    } catch (e) {
+                        console.warn('Invalid JSON in key:', oldKey);
+                    }
+                }
+            }
+        }
+        
+        // Also check for any keys that might have store suffixes (comprehensive search)
+        if (!savedData) {
+            const allKeys = Object.keys(localStorage);
+            const possibleKeys = allKeys.filter(key => 
+                (key.startsWith('EbayListingLife_') || 
+                 key.startsWith('eBayItemManager_')) &&
+                key !== storageKey // Don't re-check the store-specific key
+            );
+            console.log('Checking all possible store-specific keys:', possibleKeys);
+            for (const key of possibleKeys) {
+                const data = localStorage.getItem(key);
+                if (data) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.categories !== undefined || parsed.items !== undefined) {
+                            savedData = data;
+                            oldKeyUsed = key;
+                            loadedFromOldKey = key !== storageKey;
+                            console.log('Found data in store-specific key:', key, `(${parsed.categories?.length || 0} categories, ${parsed.items?.length || 0} items)`);
+                            break;
+                        }
+                    } catch (e) {
+                        // Not valid JSON, skip
+                    }
                 }
             }
         }
@@ -2510,27 +2576,55 @@ class EbayListingLife {
         if (savedData) {
             try {
                 const data = JSON.parse(savedData);
-                this.categories = data.categories || [];
-                this.items = data.items || [];
+                // Ensure we have arrays (handle null/undefined cases)
+                this.categories = Array.isArray(data.categories) ? data.categories : [];
+                this.items = Array.isArray(data.items) ? data.items : [];
+                
+                console.log(`✓ Successfully loaded ${this.categories.length} categories and ${this.items.length} items from key: ${oldKeyUsed || storageKey}`);
                 
                 // If we loaded from old key, migrate to store-specific key
-                if (loadedFromOldKey && window.storeManager && !localStorage.getItem(storageKey)) {
-                    this.saveData();
-                    // Clean up old key after successful migration
-                    if (oldKeyUsed === 'eBayItemManager') {
-                        localStorage.removeItem('eBayItemManager');
-                    } else if (oldKeyUsed === 'EbayListingLife' && storageKey !== 'EbayListingLife') {
-                        // Only remove if we're using store manager (to avoid breaking non-store data)
-                        localStorage.removeItem('EbayListingLife');
+                if (loadedFromOldKey && window.storeManager) {
+                    const currentStoreData = localStorage.getItem(storageKey);
+                    if (!currentStoreData) {
+                        console.log('Migrating data to store-specific key:', storageKey);
+                        try {
+                            this.saveData();
+                            console.log('✓ Migration complete - data saved to:', storageKey);
+                            // Clean up old key after successful migration (only if it's a non-store key)
+                            if (oldKeyUsed === 'eBayItemManager') {
+                                localStorage.removeItem('eBayItemManager');
+                                console.log('Removed old key: eBayItemManager');
+                            } else if (oldKeyUsed === 'EbayListingLife' && storageKey !== 'EbayListingLife') {
+                                // Only remove if we're using store manager (to avoid breaking non-store data)
+                                localStorage.removeItem('EbayListingLife');
+                                console.log('Removed old key: EbayListingLife');
+                            }
+                        } catch (migrationErr) {
+                            console.error('Error during migration:', migrationErr);
+                            // Don't fail - data is already loaded, just migration failed
+                        }
+                    } else {
+                        console.log('Data already exists in store-specific key, skipping migration');
                     }
                 }
             } catch (err) {
-                console.error('Error parsing listing data:', err);
+                console.error('✗ Error parsing listing data:', err);
+                console.error('Raw data (first 200 chars):', savedData ? savedData.substring(0, 200) : 'null');
                 this.categories = [];
                 this.items = [];
                 // Don't add sample data if there was a parse error - data might be corrupted
             }
         } else {
+            console.log('✗ No data found in any storage key');
+            // Check all localStorage keys for debugging
+            const allKeys = Object.keys(localStorage);
+            const relevantKeys = allKeys.filter(key => 
+                key.includes('Ebay') || key.includes('eBay') || key.includes('Listing') || key.includes('Store')
+            );
+            console.log('All relevant localStorage keys found:', relevantKeys);
+            if (relevantKeys.length > 0) {
+                console.log('Note: Keys found but no valid data structure detected');
+            }
             // Only add sample data if there's truly no data
             this.categories = [];
             this.items = [];
