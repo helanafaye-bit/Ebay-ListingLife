@@ -515,6 +515,15 @@ body {
     color: #6b7280;
 }
 
+.settings-help-text a {
+    color: #0064d3;
+    text-decoration: none;
+}
+
+.settings-help-text a:hover {
+    text-decoration: underline;
+}
+
 .settings-status {
     margin-top: 12px;
     font-size: 0.9rem;
@@ -526,6 +535,69 @@ body {
     content: '•';
     margin-right: 6px;
     color: #77d47f;
+}
+
+.settings-status.error::before {
+    color: #ef4444;
+}
+
+.storage-options {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.path-input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.path-input {
+    flex: 1;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 2px solid #e1e8ed;
+    font-size: 1rem;
+    background: #f2f3f4;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.path-input:focus {
+    border-color: #0064d3;
+    box-shadow: 0 0 0 3px rgba(0, 100, 211, 0.15);
+    outline: none;
+    background: white;
+}
+
+.token-input {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 2px solid #e1e8ed;
+    font-size: 1rem;
+    background: #f2f3f4;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    width: 100%;
+    font-family: 'Courier New', monospace;
+}
+
+.token-input:focus {
+    border-color: #0064d3;
+    box-shadow: 0 0 0 3px rgba(0, 100, 211, 0.15);
+    outline: none;
+    background: white;
+}
+
+.storage-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.storage-actions .btn {
+    flex: 1;
 }
 
 header {

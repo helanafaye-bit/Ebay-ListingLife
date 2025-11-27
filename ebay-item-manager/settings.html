@@ -38,6 +38,77 @@
         </header>
 
         <main class="settings-content">
+            <section class="settings-card" aria-labelledby="settingsStorageTitle">
+                <div class="settings-card-header">
+                    <h2 id="settingsStorageTitle">Data Storage Location</h2>
+                    <p>Choose where your ListingLife data is saved. Changes require restarting the storage server.</p>
+                </div>
+                <div class="settings-field">
+                    <label for="storageModeSelect">Storage Type</label>
+                    <select id="storageModeSelect" aria-describedby="storageModeHelp">
+                        <option value="local">Local Files (Save to folder on your computer)</option>
+                        <option value="dropbox">Dropbox (Save to your Dropbox account)</option>
+                        <option value="cloud">AWS S3 (Save to Amazon S3 bucket)</option>
+                    </select>
+                    <p id="storageModeHelp" class="settings-help-text">Select where you want your data to be stored.</p>
+                </div>
+
+                <!-- Local Storage Options -->
+                <div id="localStorageOptions" class="storage-options">
+                    <div class="settings-field">
+                        <label for="localStoragePath">Storage Folder Path</label>
+                        <div class="path-input-group">
+                            <input type="text" id="localStoragePath" placeholder="C:\Users\YourName\ListingLife\data" class="path-input">
+                            <button type="button" id="browseFolderBtn" class="btn btn-secondary">Browse</button>
+                        </div>
+                        <p class="settings-help-text">Enter the full path where data files should be saved, or click Browse to select a folder.</p>
+                    </div>
+                </div>
+
+                <!-- Dropbox Storage Options -->
+                <div id="dropboxStorageOptions" class="storage-options" style="display: none;">
+                    <div class="settings-field">
+                        <label for="dropboxAccessToken">Dropbox Access Token</label>
+                        <input type="password" id="dropboxAccessToken" placeholder="Enter your Dropbox access token" class="token-input">
+                        <p class="settings-help-text">
+                            <a href="https://www.dropbox.com/developers/apps" target="_blank">Get your access token</a> from Dropbox App Console. 
+                            <a href="DROPBOX_SETUP.md" target="_blank">See setup guide</a> for detailed instructions.
+                        </p>
+                    </div>
+                    <div class="settings-field">
+                        <label for="dropboxFolder">Dropbox Folder Path</label>
+                        <input type="text" id="dropboxFolder" placeholder="/ListingLife" value="/ListingLife" class="path-input">
+                        <p class="settings-help-text">Folder path in your Dropbox where data will be saved (e.g., /ListingLife).</p>
+                    </div>
+                </div>
+
+                <!-- S3 Storage Options -->
+                <div id="cloudStorageOptions" class="storage-options" style="display: none;">
+                    <div class="settings-field">
+                        <label for="s3Bucket">S3 Bucket Name</label>
+                        <input type="text" id="s3Bucket" placeholder="my-listinglife-bucket" class="path-input">
+                    </div>
+                    <div class="settings-field">
+                        <label for="awsAccessKeyId">AWS Access Key ID</label>
+                        <input type="text" id="awsAccessKeyId" placeholder="AKIAIOSFODNN7EXAMPLE" class="path-input">
+                    </div>
+                    <div class="settings-field">
+                        <label for="awsSecretAccessKey">AWS Secret Access Key</label>
+                        <input type="password" id="awsSecretAccessKey" placeholder="Enter your secret key" class="token-input">
+                    </div>
+                    <div class="settings-field">
+                        <label for="awsRegion">AWS Region</label>
+                        <input type="text" id="awsRegion" placeholder="us-east-1" value="us-east-1" class="path-input">
+                    </div>
+                </div>
+
+                <div class="storage-actions">
+                    <button type="button" id="saveStorageBtn" class="btn btn-primary">Save Storage Settings</button>
+                    <button type="button" id="testStorageBtn" class="btn btn-secondary">Test Connection</button>
+                </div>
+                <p id="storageStatus" class="settings-status" role="status" aria-live="polite"></p>
+            </section>
+
             <section class="settings-card" aria-labelledby="settingsCurrencyTitle">
                 <div class="settings-card-header">
                     <h2 id="settingsCurrencyTitle">Total Sales Currency Unit</h2>
@@ -91,6 +162,7 @@
         </div>
     </div>
 
+    <script src="storage-wrapper.js"></script>
     <script src="store-manager.js"></script>
     <script src="settings.js"></script>
 </body>
