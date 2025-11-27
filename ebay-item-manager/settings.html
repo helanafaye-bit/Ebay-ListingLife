@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings · ListingLife</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="settings-body">
+    <div class="site-top-border">
+        <a href="./index.html">
+            <img src="assets/listinglife-logo.png" alt="ListingLife logo">
+        </a>
+        <div class="beta-banner">
+            Beta Early Access: Files store locally on browser, clearing cache will ERASE ALL FILES
+        </div>
+    </div>
+    <nav class="sidebar-nav">
+        <div class="sidebar-buttons">
+            <button class="menu-btn" data-nav-target="home">Home</button>
+            <button class="menu-btn" data-nav-target="listinglife">ListingLife</button>
+            <button class="menu-btn" data-nav-target="ended">Items Ended</button>
+            <button class="menu-btn" data-nav-target="sold">Sold Items Trends</button>
+            <button class="menu-btn menu-btn-active" data-nav-target="settings">Settings</button>
+        </div>
+        <div class="store-selector-section">
+            <label for="storeSelect" style="font-size: 0.85rem; color: #4b5563; margin-bottom: 4px; display: block;">Store</label>
+            <select id="storeSelect" class="store-select">
+                <option value="">Select Store</option>
+            </select>
+            <button id="manageStoresBtn" class="btn btn-primary btn-small" style="margin-top: 8px; width: 100%;">Manage</button>
+        </div>
+    </nav>
+    <div class="container settings-page">
+        <header class="settings-header">
+            <h1>Settings</h1>
+            <p>Fine-tune how ListingLife behaves across your pages.</p>
+        </header>
+
+        <main class="settings-content">
+            <section class="settings-card" aria-labelledby="settingsCurrencyTitle">
+                <div class="settings-card-header">
+                    <h2 id="settingsCurrencyTitle">Total Sales Currency Unit</h2>
+                    <p>Select the currency used for totals on the Sold Items Trends page.</p>
+                </div>
+                <div class="settings-field">
+                    <label for="settingsCurrencySelect">Currency</label>
+                    <select id="settingsCurrencySelect" aria-describedby="settingsCurrencyHelp">
+                        <option value="GBP">GBP — British Pound (£)</option>
+                        <option value="USD">USD — US Dollar ($)</option>
+                        <option value="EUR">EUR — Euro (€)</option>
+                        <option value="AUD">AUD — Australian Dollar ($)</option>
+                        <option value="CAD">CAD — Canadian Dollar ($)</option>
+                    </select>
+                    <p id="settingsCurrencyHelp" class="settings-help-text">Updates save automatically and apply the next time you open Sold Items Trends.</p>
+                </div>
+                <p id="settingsCurrencyStatus" class="settings-status" role="status" aria-live="polite"></p>
+            </section>
+        </main>
+    </div>
+
+    <!-- Store Management Modal -->
+    <div id="storeManagementModal" class="modal">
+        <div class="modal-content">
+            <span class="close" data-close-modal="storeManagementModal">&times;</span>
+            <h2>Manage Stores</h2>
+            <div id="storesList" class="stores-list">
+                <!-- Stores will be listed here -->
+            </div>
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button type="button" id="addStoreBtn" class="btn btn-primary">Add Store</button>
+                <button type="button" class="btn btn-secondary" data-close-modal="storeManagementModal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Store Modal -->
+    <div id="storeFormModal" class="modal">
+        <div class="modal-content">
+            <span class="close" data-close-modal="storeFormModal">&times;</span>
+            <h2 id="storeFormTitle">Add Store</h2>
+            <form id="storeForm">
+                <label for="storeName">Store Name</label>
+                <input type="text" id="storeName" placeholder="Enter store name" required>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-close-modal="storeFormModal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" id="deleteStoreBtn" class="btn btn-danger" style="display: none;">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="store-manager.js"></script>
+    <script src="settings.js"></script>
+</body>
+</html>
+
