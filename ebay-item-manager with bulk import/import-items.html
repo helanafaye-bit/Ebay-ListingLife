@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Items - ListingLife</title>
+    <script>
+        // Apply dark mode immediately to prevent flash
+        (function() {
+            const darkModeEnabled = localStorage.getItem('darkMode') === 'true';
+            if (darkModeEnabled) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                // Set body background when body is available
+                if (document.body) {
+                    document.body.style.backgroundColor = '#0a0a0a';
+                } else {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        if (document.body) {
+                            document.body.style.backgroundColor = '#0a0a0a';
+                        }
+                    });
+                }
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="site-top-border">
+        <a href="./index.html">
+            <img src="assets/listinglife-logo.png" alt="ListingLife logo">
+        </a>
+        <div class="beta-banner">
+            <span>Beta Early Access</span>
+            <div class="dark-mode-container">
+                <span class="dark-mode-label">Dark Mode</span>
+                <label class="dark-mode-toggle" title="Toggle Dark Mode">
+                    <input type="checkbox" id="darkModeToggle">
+                    <span class="dark-mode-slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+    <nav class="sidebar-nav">
+        <div class="sidebar-buttons">
+            <button class="menu-btn" data-nav-target="home">Home</button>
+            <button class="menu-btn menu-btn-active" data-nav-target="listinglife">ListingLife</button>
+            <button class="menu-btn" data-nav-target="ended">Items Ended</button>
+            <button class="menu-btn" data-nav-target="sold">Sold Items Trends</button>
+            <button class="menu-btn" data-nav-target="settings">Settings</button>
+        </div>
+        <div class="store-selector-section">
+            <label for="storeSelect" style="font-size: 0.85rem; color: #4b5563; margin-bottom: 4px; display: block;">Store</label>
+            <select id="storeSelect" class="store-select">
+                <option value="">Select Store</option>
+            </select>
+            <button id="manageStoresBtn" class="btn btn-primary btn-small" style="margin-top: 8px; width: 100%;">Manage</button>
+        </div>
+    </nav>
+    <div class="container">
+        <header>
+            <h1>Import Items</h1>
+            <p style="color: #6b7280; margin-top: 8px;">Import items from a CSV/Excel file. Only Title is required - you can edit other details after import.</p>
+        </header>
+
+        <!-- Import Section -->
+        <div class="import-items-section" style="background: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <h2 style="margin-bottom: 16px; font-size: 1.25rem;">Import Items from File</h2>
+            <p style="margin-bottom: 16px; color: #6b7280; font-size: 0.9rem;">
+                Import items from a CSV or Excel file. The file should contain a column for <strong>Title</strong> (or Name). All other fields (Category, Date Added, End Date, Image URL, Description, Note) can be edited after import.
+            </p>
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <input type="file" id="importItemsFileInput" accept=".csv,.xlsx,.xls" style="display: none;">
+                <button id="importItemsFileBtn" class="btn btn-primary">Choose File to Import</button>
+                <span id="importItemsFileName" style="color: #6b7280; font-size: 0.9rem;"></span>
+            </div>
+            <div id="importItemsStatus" style="margin-top: 12px; display: none;"></div>
+        </div>
+
+        <!-- Imported Items List -->
+        <div id="importedItemsList" class="imported-items-list" style="display: grid; gap: 16px;">
+            <!-- Items will be rendered here -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="importedItemsEmpty" class="imported-items-empty" style="text-align: center; padding: 60px 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="font-size: 48px; margin-bottom: 16px;">📥</div>
+            <h3 style="margin-bottom: 8px; color: #374151;">No Items Imported</h3>
+            <p style="color: #6b7280; margin-bottom: 24px;">Import items from a CSV/Excel file to get started.</p>
+            <button id="importItemsFileBtnEmpty" class="btn btn-primary">Import Items</button>
+        </div>
+
+        <!-- Actions -->
+        <div class="import-actions" style="background: white; padding: 20px; border-radius: 12px; margin-top: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+                <div>
+                    <span id="importedItemsCount" style="color: #6b7280; font-weight: 500;">0 items imported</span>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button id="clearImportedItemsBtn" class="btn btn-danger btn-small">Clear All</button>
+                    <button id="saveImportedItemsBtn" class="btn btn-primary">Save All Items</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SheetJS for Excel file support -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="store-manager.js"></script>
+    <script src="dark-mode.js"></script>
+    <script src="import-items.js"></script>
+</body>
+</html>
+
