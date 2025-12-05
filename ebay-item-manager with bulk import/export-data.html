@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Export ListingLife Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196F3;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        .data-list {
+            margin: 20px 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .data-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .data-item input[type="checkbox"] {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📤 Export ListingLife Data</h1>
+        
+        <div class="instructions">
+            <strong>Instructions:</strong>
+            <ol>
+                <li><strong>IMPORTANT:</strong> This tool must be opened in the SAME browser where you used the old ListingLife app.</li>
+                <li>The data is stored in your browser's localStorage (not in files), so you need to access it from the same browser.</li>
+                <li>Select the data you want to export (check the boxes).</li>
+                <li>Click "Export Selected Data" to download JSON files to your Downloads folder.</li>
+                <li>Transfer these JSON files to your new machine (via USB, email, cloud storage, etc.).</li>
+                <li>On your new machine, open <a href="migrate-data.html">migrate-data.html</a> and import the JSON files.</li>
+                <li>After importing, refresh your ListingLife page - your data will appear and sync to Dropbox automatically.</li>
+            </ol>
+            <p style="margin-top: 10px; color: #d32f2f;"><strong>⚠️ If you can't access the old machine's browser:</strong> The data is only in that browser's localStorage. You'll need to access that browser to export the data, or the data will be lost.</p>
+        </div>
+
+        <div>
+            <button onclick="selectAll()">Select All</button>
+            <button onclick="deselectAll()">Deselect All</button>
+            <button onclick="exportSelected()" style="background: #007bff;">Export Selected Data</button>
+            <button onclick="checkData()" style="background: #17a2b8;">Refresh Data List</button>
+        </div>
+
+        <div id="dataList" class="data-list"></div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        const dataKeys = [];
+        
+        function checkData() {
+            const keys = Object.keys(localStorage);
+            const relevantKeys = keys.filter(key => 
+                key.includes('Ebay') || 
+                key.includes('eBay') || 
+                key.includes('Listing') || 
+                key.includes('Store') ||
+                key.includes('Sold') ||
+                key.includes('Pending') ||
+                key.includes('Imported')
+            );
+
+            dataKeys.length = 0;
+            const dataList = document.getElementById('dataList');
+            dataList.innerHTML = '';
+
+            if (relevantKeys.length === 0) {
+                showStatus('No ListingLife data found in localStorage.', 'info');
+                return;
+            }
+
+            relevantKeys.forEach(key => {
+                try {
+                    const data = localStorage.getItem(key);
+                    const size = data.length;
+                    const parsed = JSON.parse(data);
+                    
+                    let info = `${key}: ${(size / 1024).toFixed(2)} KB`;
+                    if (parsed.categories) info += ` (${parsed.categories.length} categories)`;
+                    if (parsed.items) info += ` (${parsed.items.length} items)`;
+                    if (Array.isArray(parsed)) info += ` (${parsed.length} items)`;
+                    
+                    dataKeys.push({ key, size, info, data });
+                    
+                    const item = document.createElement('div');
+                    item.className = 'data-item';
+                    item.innerHTML = `
+                        <label style="flex: 1; cursor: pointer;">
+                            <input type="checkbox" data-key="${key}" checked>
+                            <strong>${key}</strong> - ${info}
+                        </label>
+                    `;
+                    dataList.appendChild(item);
+                } catch (e) {
+                    // Not JSON, might be a string value
+                    const data = localStorage.getItem(key);
+                    const size = data.length;
+                    dataKeys.push({ key, size, info: `${key}: ${(size / 1024).toFixed(2)} KB (string value)`, data });
+                    
+                    const item = document.createElement('div');
+                    item.className = 'data-item';
+                    item.innerHTML = `
+                        <label style="flex: 1; cursor: pointer;">
+                            <input type="checkbox" data-key="${key}" checked>
+                            <strong>${key}</strong> - ${(size / 1024).toFixed(2)} KB (string value)
+                        </label>
+                    `;
+                    dataList.appendChild(item);
+                }
+            });
+
+            showStatus(`Found ${relevantKeys.length} data key(s) in localStorage.`, 'info');
+        }
+
+        function selectAll() {
+            document.querySelectorAll('#dataList input[type="checkbox"]').forEach(cb => cb.checked = true);
+        }
+
+        function deselectAll() {
+            document.querySelectorAll('#dataList input[type="checkbox"]').forEach(cb => cb.checked = false);
+        }
+
+        function exportSelected() {
+            const checked = Array.from(document.querySelectorAll('#dataList input[type="checkbox"]:checked'))
+                .map(cb => cb.dataset.key);
+            
+            if (checked.length === 0) {
+                showStatus('Please select at least one data item to export.', 'info');
+                return;
+            }
+
+            let exported = 0;
+            checked.forEach(key => {
+                try {
+                    const data = localStorage.getItem(key);
+                    if (!data) return;
+                    
+                    // Determine if it's JSON or a string
+                    let jsonData;
+                    try {
+                        jsonData = JSON.parse(data);
+                    } catch (e) {
+                        // It's a string, keep it as is
+                        jsonData = data;
+                    }
+                    
+                    // Create download
+                    const blob = new Blob([typeof jsonData === 'string' ? jsonData : JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${key}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    exported++;
+                } catch (error) {
+                    console.error(`Error exporting ${key}:`, error);
+                }
+            });
+
+            if (exported > 0) {
+                showStatus(`Successfully exported ${exported} file(s). Check your Downloads folder.`, 'success');
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.className = `status ${type}`;
+            status.textContent = message;
+        }
+
+        // Auto-check on load
+        window.addEventListener('load', checkData);
+    </script>
+</body>
+</html>
+
