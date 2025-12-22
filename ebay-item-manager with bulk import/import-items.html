@@ -104,6 +104,47 @@
         </div>
     </div>
 
+    <!-- Modal for editing imported items -->
+    <div id="editImportedItemModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" id="closeEditImportedItemModal">&times;</span>
+            <h2>Edit Imported Item</h2>
+            <form id="editImportedItemForm" novalidate>
+                <label for="editImportedItemCategory">Select Category</label>
+                <select id="editImportedItemCategory" style="width: 100%; padding: 8px;">
+                    <option value="">Not set</option>
+                </select>
+                
+                <label for="editImportedItemName">Item Name</label>
+                <input type="text" id="editImportedItemName" placeholder="Item name" required style="width: 100%; padding: 8px;">
+                
+                <label for="editImportedItemDescription">Description (optional)</label>
+                <textarea id="editImportedItemDescription" placeholder="Enter detailed description..." rows="3" style="width: 100%; padding: 8px;"></textarea>
+                
+                <label for="editImportedItemNote">Note (optional)</label>
+                <textarea id="editImportedItemNote" placeholder="Add any additional notes..." rows="2" style="width: 100%; padding: 8px;"></textarea>
+                
+                <label for="editImportedItemDateAdded">Date Added (optional)</label>
+                <input type="date" id="editImportedItemDateAdded" style="width: 100%; padding: 8px;">
+                
+                <label for="editImportedItemEndDate">End Date</label>
+                <input type="date" id="editImportedItemEndDate" style="width: 100%; padding: 8px;">
+                
+                <label for="editImportedItemPhoto">Image URL (optional)</label>
+                <input type="url" id="editImportedItemPhoto" placeholder="Paste image URL" style="width: 100%; padding: 8px;">
+                
+                <div id="editImportedItemPhotoPreview" style="display: none; margin-top: 8px;">
+                    <img id="editImportedItemPreviewImage" src="" alt="Preview" style="max-width: 100%; max-height: 200px; border-radius: 4px;">
+                </div>
+                
+                <div style="display: flex; gap: 8px; margin-top: 16px;">
+                    <button type="button" id="cancelEditImportedItem" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- SheetJS for Excel file support -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="store-manager.js"></script>

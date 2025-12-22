@@ -107,6 +107,7 @@ def initialize_storage():
                             dropbox_client.users_get_current_account()
                             connection_success = True
                             logger.info(f"Dropbox storage initialized. Folder: {DROPBOX_FOLDER}")
+                            # Success! Keep STORAGE_MODE as 'dropbox' and dropbox_client set
                         except (dropbox.exceptions.AuthError, dropbox.exceptions.ApiError) as api_error:
                             # Only retry on network/rate limit errors, not auth errors
                             error_msg = str(api_error)
@@ -139,6 +140,12 @@ def initialize_storage():
                                 continue
                             else:
                                 raise
+                    
+                    # If we get here and connection_success is True, Dropbox is working
+                    if connection_success:
+                        # Ensure STORAGE_MODE stays as 'dropbox'
+                        STORAGE_MODE = 'dropbox'
+                        logger.info("✅ Dropbox connection verified and active")
                     
                 except dropbox.exceptions.AuthError as auth_error:
                     error_msg = str(auth_error)
@@ -186,8 +193,8 @@ def initialize_storage():
                     dropbox = None
             else:
                 logger.warning("STORAGE_MODE is 'dropbox' but DROPBOX_ACCESS_TOKEN not set. Falling back to local.")
-            STORAGE_MODE = 'local'
-            dropbox = None
+                STORAGE_MODE = 'local'
+                dropbox = None
 
 # Initialize with default values
 initialize_storage()
@@ -366,10 +373,16 @@ def set_item():
         
         # Save based on storage mode
         if STORAGE_MODE == 'local':
+            logger.info(f"Saving to LOCAL storage: {key}")
             save_to_local(key, value)
         elif STORAGE_MODE == 'cloud':
+            logger.info(f"Saving to CLOUD storage: {key}")
             save_to_cloud(key, value)
         elif STORAGE_MODE == 'dropbox':
+            if not dropbox_client:
+                logger.error(f"Dropbox client not initialized! Cannot save {key}")
+                return jsonify({'error': 'Dropbox client not initialized. Check server logs.'}), 500
+            logger.info(f"Saving to DROPBOX storage: {key}")
             save_to_dropbox(key, value)
         else:
             return jsonify({'error': f'Invalid storage mode: {STORAGE_MODE}'}), 500
@@ -391,10 +404,16 @@ def get_item():
         
         # Load based on storage mode
         if STORAGE_MODE == 'local':
+            logger.info(f"Loading from LOCAL storage: {key}")
             result = load_from_local(key)
         elif STORAGE_MODE == 'cloud':
+            logger.info(f"Loading from CLOUD storage: {key}")
             result = load_from_cloud(key)
         elif STORAGE_MODE == 'dropbox':
+            if not dropbox_client:
+                logger.error(f"Dropbox client not initialized! Cannot load {key}")
+                return jsonify({'error': 'Dropbox client not initialized. Check server logs.'}), 500
+            logger.info(f"Loading from DROPBOX storage: {key}")
             result = load_from_dropbox(key)
         else:
             return jsonify({'error': f'Invalid storage mode: {STORAGE_MODE}'}), 500
@@ -540,16 +559,23 @@ def sync_data():
         logger.error(f"Error in sync_data: {e}")
         return jsonify({'error': str(e)}), 500
 
-CONFIG_FILE = Path('./storage_config.json')
+# Get the directory where this script is located
+SCRIPT_DIR = Path(__file__).parent.absolute()
+CONFIG_FILE = SCRIPT_DIR / 'storage_config.json'
 
 def load_config_file():
     """Load storage config from file"""
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                config = json.load(f)
+                logger.info(f"Loaded config from: {CONFIG_FILE}")
+                logger.info(f"Storage mode in config: {config.get('storage_mode', 'not set')}")
+                return config
         except Exception as e:
             logger.error(f"Error loading config file: {e}")
+    else:
+        logger.info(f"Config file not found at: {CONFIG_FILE}")
     return None
 
 def save_config_file(config):
@@ -777,11 +803,16 @@ if __name__ == '__main__':
     file_config = load_config_file()
     if file_config:
         # Override environment variables with file config
-        os.environ['STORAGE_MODE'] = file_config.get('storage_mode', 'local')
+        requested_mode = file_config.get('storage_mode', 'local')
+        os.environ['STORAGE_MODE'] = requested_mode
+        logger.info(f"Setting storage mode from config: {requested_mode}")
+        
         if file_config.get('local_storage_path'):
             os.environ['LOCAL_STORAGE_PATH'] = file_config['local_storage_path']
         if file_config.get('dropbox_access_token'):
-            os.environ['DROPBOX_ACCESS_TOKEN'] = file_config['dropbox_access_token']
+            token = file_config['dropbox_access_token']
+            os.environ['DROPBOX_ACCESS_TOKEN'] = token
+            logger.info(f"Dropbox token loaded: {token[:20]}... (length: {len(token)})")
         if file_config.get('dropbox_folder'):
             os.environ['DROPBOX_FOLDER'] = file_config['dropbox_folder']
         if file_config.get('s3_bucket'):
@@ -794,6 +825,20 @@ if __name__ == '__main__':
             os.environ['AWS_REGION'] = file_config['aws_region']
         
         # Re-initialize storage with new config
+        logger.info("Initializing storage with config file settings...")
+        initialize_storage()
+        
+        # Warn if Dropbox was requested but not initialized
+        if requested_mode == 'dropbox' and STORAGE_MODE != 'dropbox':
+            print("=" * 60)
+            print("⚠️  WARNING: Dropbox was requested but initialization failed!")
+            print("=" * 60)
+            print("The server will use LOCAL storage instead.")
+            print("Check the logs above for error details.")
+            print("=" * 60)
+            print()
+    else:
+        logger.info("No config file found, using environment variables or defaults")
         initialize_storage()
     
     print("=" * 60)
@@ -807,6 +852,10 @@ if __name__ == '__main__':
         print(f"Cloud Bucket (S3): {CLOUD_BUCKET}")
     elif STORAGE_MODE == 'dropbox':
         print(f"Dropbox Folder: {DROPBOX_FOLDER}")
+        if dropbox_client:
+            print("✅ Dropbox connection: ACTIVE")
+        else:
+            print("❌ Dropbox connection: FAILED (check logs above)")
     print(f"Server running on: http://127.0.0.1:5000")
     print("=" * 60)
     print("Press Ctrl+C to stop the server")

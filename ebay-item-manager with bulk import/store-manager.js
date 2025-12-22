@@ -396,6 +396,25 @@ class StoreManager {
             this.stores.push(newStore);
             this.saveStores();
             this.updateStoreDropdown();
+            
+            // Initialize empty data for the new store to prevent it from loading data from other stores
+            const newStoreDataKey = `${newStore.id}`;
+            const dataKeys = ['EbayListingLife', 'SoldItemsTrends', 'ImportedItems'];
+            dataKeys.forEach(key => {
+                const storeKey = `${key}_${newStore.id}`;
+                // Only initialize if it doesn't exist (don't overwrite if somehow it does)
+                if (!localStorage.getItem(storeKey)) {
+                    // Initialize with empty structure
+                    if (key === 'EbayListingLife') {
+                        localStorage.setItem(storeKey, JSON.stringify({ categories: [], items: [] }));
+                    } else if (key === 'SoldItemsTrends') {
+                        localStorage.setItem(storeKey, JSON.stringify({ periods: [], currentPeriodId: null }));
+                    } else if (key === 'ImportedItems') {
+                        localStorage.setItem(storeKey, JSON.stringify([]));
+                    }
+                }
+            });
+            
             this.showNotification('Store created successfully.', 'success');
         }
 

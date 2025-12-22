@@ -1540,6 +1540,26 @@ header h1 {
     border: 1px solid var(--border-color);
 }
 
+.ended-item-checkbox-container {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 5px;
+}
+
+.ended-item-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #0064d3;
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] .ended-item-checkbox {
+    accent-color: #3b82f6;
+}
+
 .item:hover {
     background: var(--bg-secondary);
     transform: translateX(5px);

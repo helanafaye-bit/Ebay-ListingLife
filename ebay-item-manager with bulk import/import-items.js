@@ -23,6 +23,7 @@ class ImportItemsManager {
         this.setupEventListeners();
         this.renderImportedItems();
         this.setupNavigation();
+        this.setupEditModal();
     }
 
     setupNavigation() {
@@ -373,34 +374,195 @@ class ImportItemsManager {
     }
 
     editImportedItem(itemId) {
-        // Open item in ListingLife for editing
+        // Show edit modal instead of redirecting
         const item = this.importedItems.find(i => i.id === itemId);
         if (!item) return;
 
-        // Load categories to get category name if categoryId is set
+        // Store current editing item
+        this.currentEditingItemId = itemId;
+        this.currentEditingItem = item;
+
+        // Load categories for the dropdown
+        this.loadCategoriesForEdit();
+
+        // Populate form with item data
+        document.getElementById('editImportedItemName').value = item.name || '';
+        document.getElementById('editImportedItemDescription').value = item.description || '';
+        document.getElementById('editImportedItemNote').value = item.note || '';
+        document.getElementById('editImportedItemDateAdded').value = item.dateAdded || '';
+        
+        // Calculate end date if we have dateAdded and duration
+        if (item.dateAdded && item.duration) {
+            const start = new Date(item.dateAdded);
+            const end = new Date(start);
+            end.setDate(end.getDate() + item.duration);
+            document.getElementById('editImportedItemEndDate').value = end.toISOString().split('T')[0];
+        } else if (item.endDate) {
+            document.getElementById('editImportedItemEndDate').value = item.endDate;
+        } else {
+            document.getElementById('editImportedItemEndDate').value = '';
+        }
+        
+        document.getElementById('editImportedItemPhoto').value = item.photo || '';
+        
+        // Show photo preview if photo exists
+        const previewDiv = document.getElementById('editImportedItemPhotoPreview');
+        const previewImg = document.getElementById('editImportedItemPreviewImage');
+        if (item.photo) {
+            previewImg.src = item.photo;
+            previewDiv.style.display = 'block';
+            previewImg.onerror = () => {
+                previewDiv.style.display = 'none';
+            };
+        } else {
+            previewDiv.style.display = 'none';
+        }
+
+        // Set category if it exists
+        const categorySelect = document.getElementById('editImportedItemCategory');
+        if (item.categoryId) {
+            // Will be set after categories load
+            this.pendingCategoryId = item.categoryId;
+        } else {
+            categorySelect.value = '';
+        }
+
+        // Show modal
+        const modal = document.getElementById('editImportedItemModal');
+        modal.style.display = 'block';
+    }
+
+    loadCategoriesForEdit() {
         const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('EbayListingLife') : 'EbayListingLife';
         const saved = localStorage.getItem(storageKey);
+        const categorySelect = document.getElementById('editImportedItemCategory');
+        
+        // Clear existing options except "Not set"
+        categorySelect.innerHTML = '<option value="">Not set</option>';
+        
         if (saved) {
             try {
                 const data = JSON.parse(saved);
-                if (item.categoryId && data.categories) {
-                    const category = data.categories.find(c => c.id === item.categoryId);
-                    if (category) {
-                        // Category exists, item is ready to edit
-                    } else {
-                        // Category doesn't exist, clear categoryId
-                        item.categoryId = null;
+                if (data.categories && Array.isArray(data.categories)) {
+                    data.categories.forEach(category => {
+                        const option = document.createElement('option');
+                        option.value = category.id;
+                        option.textContent = category.name;
+                        categorySelect.appendChild(option);
+                    });
+                    
+                    // Set the category if we have a pending one
+                    if (this.pendingCategoryId) {
+                        const category = data.categories.find(c => c.id === this.pendingCategoryId);
+                        if (category) {
+                            categorySelect.value = this.pendingCategoryId;
+                        } else {
+                            // Category doesn't exist, clear it
+                            this.currentEditingItem.categoryId = null;
+                            categorySelect.value = '';
+                        }
+                        this.pendingCategoryId = null;
                     }
                 }
             } catch (e) {
                 console.error('Error loading categories:', e);
             }
         }
+    }
 
-        // Store item data to be edited
-        sessionStorage.setItem('editImportedItem', JSON.stringify(item));
-        sessionStorage.setItem('editImportedItemId', itemId);
-        window.location.href = './ebaylistings.html?editImported=' + itemId;
+    setupEditModal() {
+        const modal = document.getElementById('editImportedItemModal');
+        const closeBtn = document.getElementById('closeEditImportedItemModal');
+        const cancelBtn = document.getElementById('cancelEditImportedItem');
+        const form = document.getElementById('editImportedItemForm');
+        const photoInput = document.getElementById('editImportedItemPhoto');
+
+        // Close modal handlers
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+        }
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+        }
+        
+        // Close on outside click
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // Form submit
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveEditedImportedItem();
+            });
+        }
+
+        // Photo preview
+        if (photoInput) {
+            photoInput.addEventListener('input', (e) => {
+                const url = e.target.value.trim();
+                const previewDiv = document.getElementById('editImportedItemPhotoPreview');
+                const previewImg = document.getElementById('editImportedItemPreviewImage');
+                
+                if (url) {
+                    previewImg.src = url;
+                    previewDiv.style.display = 'block';
+                    previewImg.onerror = () => {
+                        previewDiv.style.display = 'none';
+                    };
+                } else {
+                    previewDiv.style.display = 'none';
+                }
+            });
+        }
+    }
+
+    saveEditedImportedItem() {
+        if (!this.currentEditingItemId || !this.currentEditingItem) return;
+
+        const item = this.importedItems.find(i => i.id === this.currentEditingItemId);
+        if (!item) return;
+
+        // Get form values
+        item.name = document.getElementById('editImportedItemName').value.trim();
+        item.description = document.getElementById('editImportedItemDescription').value.trim();
+        item.note = document.getElementById('editImportedItemNote').value.trim();
+        item.dateAdded = document.getElementById('editImportedItemDateAdded').value;
+        item.endDate = document.getElementById('editImportedItemEndDate').value;
+        item.photo = document.getElementById('editImportedItemPhoto').value.trim();
+        
+        const categoryId = document.getElementById('editImportedItemCategory').value;
+        item.categoryId = categoryId || null;
+
+        // Calculate duration if we have dates
+        if (item.dateAdded && item.endDate) {
+            const start = new Date(item.dateAdded);
+            const end = new Date(item.endDate);
+            const diffMs = end - start;
+            item.duration = Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1);
+        }
+
+        // Validate
+        if (!item.name) {
+            this.showNotification('Please enter an item name.', 'error');
+            return;
+        }
+
+        // Save and refresh
+        this.saveImportedItems();
+        this.renderImportedItems();
+        
+        // Close modal
+        document.getElementById('editImportedItemModal').style.display = 'none';
+        
+        this.showNotification('Item updated successfully.', 'success');
     }
 
     removeImportedItem(itemId) {

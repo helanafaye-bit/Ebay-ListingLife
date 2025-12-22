@@ -475,10 +475,17 @@ class EbayListingLife {
                 return;
             }
             
-            // Handle clicks on the item itself (not on buttons)
+            // Handle checkbox clicks - prevent them from triggering item edit
+            if (e.target.matches('.ended-item-checkbox') || e.target.closest('.ended-item-checkbox-container')) {
+                e.stopPropagation();
+                // Checkbox is just visual, no action needed
+                return;
+            }
+            
+            // Handle clicks on the item itself (not on buttons or checkbox)
             // Check if click is on item-clickable or any of its children (including highlighted spans)
             const itemElement = e.target.closest('.item-clickable');
-            if (itemElement && !e.target.closest('.item-actions')) {
+            if (itemElement && !e.target.closest('.item-actions') && !e.target.closest('.ended-item-checkbox-container')) {
                 const itemId = itemElement.getAttribute('data-item-id');
                 if (itemId) {
                     console.log('Item clicked (not button) for item:', itemId);
@@ -2342,6 +2349,10 @@ class EbayListingLife {
     // Generate hash for ended items to detect changes
     _getEndedItemsHash() {
         const endedItems = this.items.filter(item => {
+            // Exclude sold items from ended items hash
+            if (item.soldDate) {
+                return false;
+            }
             const daysLeft = this.calculateDaysLeft(item);
             return daysLeft <= 0;
         });
@@ -2508,11 +2519,17 @@ class EbayListingLife {
         const container = document.getElementById('endedItemsList');
         if (!container) return;
         
-        // Filter items that have 0 or negative days left (only calculate once per item)
+        // Filter items that have 0 or negative days left, but exclude items that were sold
+        // (sold items should only appear in the sold items section)
         const endedItems = [];
         const itemDaysLeft = new Map(); // Cache days left calculations
         
         this.items.forEach(item => {
+            // Skip items that have been marked as sold
+            if (item.soldDate) {
+                return;
+            }
+            
             const daysLeft = this.calculateDaysLeft(item);
             itemDaysLeft.set(item.id, daysLeft);
             if (daysLeft <= 0) {
@@ -2552,6 +2569,9 @@ class EbayListingLife {
             
             return `
                 <div class="item item-clickable" data-item-id="${item.id}">
+                    <div class="ended-item-checkbox-container">
+                        <input type="checkbox" class="ended-item-checkbox" data-item-id="${item.id}" title="Mark as done">
+                    </div>
                     ${photoHtml}
                     <div class="item-info">
                         <div class="item-name">${this.escapeHtml(item.name)}</div>
@@ -3241,8 +3261,6 @@ class EbayListingLife {
             // Combine old keys with found keys, removing duplicates
             const keysToCheck = [...new Set([...oldKeys, ...possibleKeys])];
             
-            console.log('Checking for old data in keys:', keysToCheck);
-            
             for (const oldKey of keysToCheck) {
                 const data = localStorage.getItem(oldKey);
                 if (data && data.trim().length > 0) {
@@ -3263,33 +3281,8 @@ class EbayListingLife {
             }
         }
         
-        // Also check for any keys that might have store suffixes (comprehensive search)
-        if (!savedData) {
-            const allKeys = Object.keys(localStorage);
-            const possibleKeys = allKeys.filter(key => 
-                (key.startsWith('EbayListingLife_') || 
-                 key.startsWith('eBayItemManager_')) &&
-                key !== storageKey // Don't re-check the store-specific key
-            );
-            console.log('Checking all possible store-specific keys:', possibleKeys);
-            for (const key of possibleKeys) {
-                const data = localStorage.getItem(key);
-                if (data) {
-                    try {
-                        const parsed = JSON.parse(data);
-                        if (parsed.categories !== undefined || parsed.items !== undefined) {
-                            savedData = data;
-                            oldKeyUsed = key;
-                            loadedFromOldKey = key !== storageKey;
-                            console.log('Found data in store-specific key:', key, `(${parsed.categories?.length || 0} categories, ${parsed.items?.length || 0} items)`);
-                            break;
-                        }
-                    } catch (e) {
-                        // Not valid JSON, skip
-                    }
-                }
-            }
-        }
+        // Don't check other store-specific keys - each store should have its own data
+        // Only check old non-store keys for backward compatibility
         
         // ALWAYS try loading from backend if available (even if localStorage has data)
         // This ensures we get the latest data from backend storage (Dropbox/cloud/local file)
@@ -3424,31 +3417,7 @@ class EbayListingLife {
                 // Don't add sample data if there was a parse error - data might be corrupted
             }
         } else {
-            console.error('✗✗✗ NO DATA FOUND IN ANY STORAGE KEY ✗✗✗');
-            console.error('This means your listings data is not in localStorage.');
-            console.error('Possible reasons:');
-            console.error('1. Data was cleared from browser');
-            console.error('2. Using a different browser than where data was created');
-            console.error('3. Data is stored under an unexpected key name');
-            console.error('');
-            // Check all localStorage keys for debugging
-            const allKeys = Object.keys(localStorage);
-            const relevantKeys = allKeys.filter(key => 
-                key.toLowerCase().includes('ebay') || 
-                key.toLowerCase().includes('listing') || 
-                key.toLowerCase().includes('item') ||
-                key.toLowerCase().includes('store')
-            );
-            console.error('All localStorage keys that might be relevant:', relevantKeys);
-            console.error('');
-            console.error('ACTION REQUIRED:');
-            console.error('1. Open force-recover-data.html to scan ALL localStorage keys');
-            console.error('2. Look for any key that might contain your categories/items');
-            console.error('3. Use the recovery tool to migrate that data');
-            if (relevantKeys.length > 0) {
-                console.log('Note: Keys found but no valid data structure detected');
-            }
-            // Only add sample data if there's truly no data
+            // No data found - start with empty arrays
             this.categories = [];
             this.items = [];
         }
