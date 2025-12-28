@@ -8,9 +8,141 @@ class StoreManager {
 
     async init() {
         await this.loadStores();
+        await this.migrateStoreIdsIfNeeded(); // Migrate old random IDs to deterministic IDs
         await this.loadCurrentStore();
         this.setupEventListeners();
         this.updateStoreDropdown();
+    }
+    
+    // Generate deterministic ID based on store name (same as in handleStoreFormSubmit)
+    generateStoreId(storeName) {
+        // Simple hash function to create deterministic ID from name
+        let hash = 0;
+        const normalizedName = storeName.toLowerCase().trim();
+        for (let i = 0; i < normalizedName.length; i++) {
+            const char = normalizedName.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        // Make it positive and add 'store-' prefix
+        return `store-${Math.abs(hash).toString(36)}`;
+    }
+    
+    // Check if a store ID looks like an old random ID (contains timestamp-like pattern)
+    isRandomStoreId(storeId) {
+        // Old format: store-<timestamp>36base-<random> (e.g., "store-k123abc-def456")
+        // New format: store-<hash> (e.g., "store-abc123")
+        // Random IDs have multiple segments separated by hyphens (more than 2 parts)
+        // Keep 'default' as-is (it's a special case)
+        if (storeId === 'default') {
+            return false;
+        }
+        const parts = storeId.split('-');
+        // If it has more than 2 parts (store-xxx-yyy), it's likely a random ID from the old format
+        // This matches the old format: `store-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`
+        return parts.length > 2;
+    }
+    
+    async migrateStoreIdsIfNeeded() {
+        let migrated = false;
+        const migrationMap = {}; // oldId -> newId mapping
+        
+        // Check each store to see if it needs migration
+        for (const store of this.stores) {
+            const expectedId = this.generateStoreId(store.name);
+            
+            // If the store ID is different from what it should be (based on name), migrate it
+            if (store.id !== expectedId && this.isRandomStoreId(store.id)) {
+                console.log(`Migrating store "${store.name}" from ID "${store.id}" to "${expectedId}"...`);
+                migrationMap[store.id] = expectedId;
+                
+                // Migrate data keys from old ID to new ID
+                const dataKeys = ['EbayListingLife', 'SoldItemsTrends', 'ImportedItems'];
+                let dataMigrated = false;
+                
+                for (const dataKey of dataKeys) {
+                    const oldKey = `${dataKey}_${store.id}`;
+                    const newKey = `${dataKey}_${expectedId}`;
+                    
+                    // Migrate from localStorage
+                    const oldData = localStorage.getItem(oldKey);
+                    if (oldData) {
+                        try {
+                            // Only migrate if new key doesn't already exist (don't overwrite)
+                            if (!localStorage.getItem(newKey)) {
+                                localStorage.setItem(newKey, oldData);
+                                console.log(`  ✓ Migrated ${dataKey} from localStorage (${oldKey} -> ${newKey})`);
+                                dataMigrated = true;
+                            } else {
+                                console.log(`  ⚠ ${dataKey} already exists at ${newKey}, keeping both (old data at ${oldKey})`);
+                            }
+                        } catch (error) {
+                            console.error(`  ✗ Error migrating ${dataKey} from localStorage:`, error);
+                        }
+                    }
+                    
+                    // Also migrate from backend if available
+                    if (window.storageWrapper && window.storageWrapper.useBackend && window.storageWrapper.backendAvailable) {
+                        try {
+                            const response = await fetch('http://127.0.0.1:5000/api/storage/get', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ key: oldKey })
+                            });
+                            
+                            if (response.ok) {
+                                const result = await response.json();
+                                if (result.value) {
+                                    // Check if new key already exists in backend
+                                    const checkResponse = await fetch('http://127.0.0.1:5000/api/storage/get', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ key: newKey })
+                                    });
+                                    
+                                    if (checkResponse.ok) {
+                                        const checkResult = await checkResponse.json();
+                                        if (!checkResult.value) {
+                                            // New key doesn't exist, migrate
+                                            await window.storageWrapper.saveToBackend(newKey, result.value);
+                                            console.log(`  ✓ Migrated ${dataKey} from backend (${oldKey} -> ${newKey})`);
+                                            dataMigrated = true;
+                                        } else {
+                                            console.log(`  ⚠ ${dataKey} already exists in backend at ${newKey}, keeping both`);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (backendError) {
+                            console.warn(`  ⚠ Could not migrate ${dataKey} from backend:`, backendError.message);
+                        }
+                    }
+                }
+                
+                // Update store ID to new deterministic ID
+                store.id = expectedId;
+                migrated = true;
+                
+                if (dataMigrated) {
+                    console.log(`  ✓ Store "${store.name}" migration complete`);
+                }
+            }
+        }
+        
+        // Update currentStoreId if it was migrated
+        if (migrationMap[this.currentStoreId]) {
+            this.currentStoreId = migrationMap[this.currentStoreId];
+            console.log(`  ✓ Updated current store ID to: ${this.currentStoreId}`);
+        }
+        
+        // Save updated stores list if any migrations occurred
+        if (migrated) {
+            this.saveStores();
+            if (this.currentStoreId && migrationMap[Object.keys(migrationMap)[0]]) {
+                this.saveCurrentStore();
+            }
+            console.log('✓ Store ID migration complete. All data preserved.');
+        }
     }
 
     async loadStores() {
@@ -68,6 +200,7 @@ class StoreManager {
 
     saveStores() {
         try {
+            // localStorage.setItem is automatically synced to backend by storage-wrapper.js
             localStorage.setItem('ListingLifeStores', JSON.stringify(this.stores));
         } catch (error) {
             console.error('Error saving stores:', error);
@@ -131,8 +264,10 @@ class StoreManager {
     saveCurrentStore() {
         try {
             if (this.currentStoreId) {
+                // localStorage.setItem is automatically synced to backend by storage-wrapper.js
                 localStorage.setItem('ListingLifeCurrentStore', this.currentStoreId);
             } else {
+                // localStorage.removeItem is automatically synced to backend by storage-wrapper.js
                 localStorage.removeItem('ListingLifeCurrentStore');
             }
         } catch (error) {
@@ -388,8 +523,25 @@ class StoreManager {
                 return;
             }
 
+            // Generate deterministic ID based on store name so same store name = same ID across devices
+            // This ensures Dropbox sync works correctly across multiple laptops
+            const newStoreId = this.generateStoreId(name);
+            
+            // Check if ID already exists (shouldn't happen with deterministic IDs and unique names, but handle it just in case)
+            let finalStoreId = newStoreId;
+            const idExists = this.stores.some(s => s.id === newStoreId);
+            if (idExists) {
+                // This should be extremely rare - add a suffix to make it unique
+                let counter = 1;
+                while (this.stores.some(s => s.id === finalStoreId)) {
+                    finalStoreId = `${newStoreId}-${counter}`;
+                    counter++;
+                }
+                console.warn(`Store ID collision detected for "${name}", using ID: ${finalStoreId}`);
+            }
+            
             const newStore = {
-                id: `store-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`,
+                id: finalStoreId,
                 name: name,
                 createdAt: new Date().toISOString()
             };

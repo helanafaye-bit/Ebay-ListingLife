@@ -3337,22 +3337,17 @@ class EbayListingLife {
                         }
                     } else {
                         console.log('Backend returned no data for key:', storageKey);
-                        // Backend has no data, but localStorage does - sync localStorage to backend
-                        if (savedData && useBackendStorage) {
-                            console.log('⚠️ Backend has no data but localStorage does. Syncing localStorage to backend...');
-                            try {
-                                const dataToSync = JSON.parse(savedData);
-                                await fetch(`http://127.0.0.1:5000/api/storage/set`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json'
-                                    },
-                                    body: JSON.stringify({ key: storageKey, value: dataToSync })
-                                });
-                                console.log('✓ Synced localStorage data to backend');
-                            } catch (syncError) {
-                                console.warn('Could not sync localStorage to backend:', syncError);
-                            }
+                        // Backend has no data - this could mean:
+                        // 1. This is a new store/laptop with no data yet (OK - use localStorage if available)
+                        // 2. Backend storage was just configured (OK - use localStorage if available)
+                        // 3. Temporary backend error (already handled by fallback to localStorage)
+                        // DO NOT auto-sync localStorage to backend here because:
+                        // - If backend is the source of truth, localStorage might have old data
+                        // - If this is a new laptop, backend should stay empty until user makes changes
+                        // - Auto-sync can overwrite newer backend data with old localStorage data
+                        // Backend will be populated naturally when user saves changes via saveData()
+                        if (savedData) {
+                            console.log('Using localStorage data as backend is empty. Backend will be updated on next save.');
                         }
                     }
                 } else {
