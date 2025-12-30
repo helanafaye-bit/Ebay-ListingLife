@@ -574,26 +574,64 @@ class StoreManager {
         this.editingStoreId = null;
     }
 
-    handleDeleteStore() {
+    async handleDeleteStore() {
         if (!this.editingStoreId) return;
 
         const store = this.stores.find(s => s.id === this.editingStoreId);
         if (!store) return;
 
-        // Prevent deleting if it's the only store
+        // Warn if deleting the last store
         if (this.stores.length === 1) {
-            this.showNotification('Cannot delete the only store. Please create another store first.', 'warning');
-            return;
+            const confirmMessage = `⚠️ WARNING: This is the only store!\n\n` +
+                `Deleting this store will:\n` +
+                `- Remove ALL store data from this device\n` +
+                `- Remove ALL store data from Dropbox/cloud storage\n` +
+                `- Leave you with NO stores (you'll need to create a new one)\n\n` +
+                `This action CANNOT be undone!\n\n` +
+                `Are you ABSOLUTELY SURE you want to delete "${store.name}"?`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Double confirmation for last store
+            if (!confirm(`FINAL CONFIRMATION: You are about to delete the ONLY store and ALL its data.\n\n` +
+                `This will permanently delete:\n` +
+                `- All listings and categories\n` +
+                `- All ended items\n` +
+                `- All sold trends\n` +
+                `- All settings\n` +
+                `- From both this device AND Dropbox/cloud storage\n\n` +
+                `Type "DELETE" in the next prompt to confirm.`)) {
+                return;
+            }
+        } else {
+            // Standard confirmation for non-last store
+            if (!confirm(`Are you sure you want to delete "${store.name}"? This will permanently delete all data for this store including listings, ended items, sold trends, and settings from both this device and Dropbox/cloud storage.`)) {
+                return;
+            }
         }
 
-        // Confirm deletion
-        if (!confirm(`Are you sure you want to delete "${store.name}"? This will permanently delete all data for this store including listings, ended items, sold trends, and settings.`)) {
-            return;
-        }
-
-        // Delete store data from localStorage
+        // Delete store data from localStorage (this will auto-sync to backend via storage-wrapper)
         const storeId = this.editingStoreId;
-        const dataKeys = ['EbayListingLife', 'SoldItemsTrends', 'ListingLifeSettings', 'eBayItemManager'];
+        const dataKeys = ['EbayListingLife', 'SoldItemsTrends', 'ListingLifeSettings', 'eBayItemManager', 'ImportedItems'];
+        
+        // Delete from localStorage (this automatically triggers backend sync via storage-wrapper)
+        // We also explicitly queue backend removal as a backup to ensure deletion happens
+        if (window.storageWrapper && window.storageWrapper.useBackend && window.storageWrapper.backendAvailable) {
+            console.log(`Deleting store data from backend for store: ${storeId}`);
+            // Queue backend removals (localStorage.removeItem below will also trigger sync, but this ensures it)
+            dataKeys.forEach(key => {
+                const fullKey = `${key}_${storeId}`;
+                try {
+                    window.storageWrapper.queueBackendRemove(fullKey);
+                } catch (error) {
+                    console.warn(`Could not queue deletion of ${fullKey} from backend:`, error.message);
+                }
+            });
+        }
+        
+        // Delete from localStorage (this also triggers backend sync via storage-wrapper)
         dataKeys.forEach(key => {
             try {
                 localStorage.removeItem(`${key}_${storeId}`);
@@ -606,7 +644,7 @@ class StoreManager {
         this.stores = this.stores.filter(s => s.id !== storeId);
         this.saveStores();
 
-        // If deleted store was current, switch to first available
+        // If deleted store was current, switch to first available (or null if no stores left)
         if (this.currentStoreId === storeId) {
             this.currentStoreId = this.stores[0]?.id || null;
             this.saveCurrentStore();
@@ -615,6 +653,13 @@ class StoreManager {
         this.updateStoreDropdown();
         this.closeModal('storeFormModal');
         this.editingStoreId = null;
+
+        // Show success message
+        if (this.stores.length === 0) {
+            this.showNotification('Store deleted. Please create a new store to continue.', 'info');
+        } else {
+            this.showNotification('Store deleted successfully.', 'success');
+        }
 
         // Reload page to refresh data
         window.location.reload();

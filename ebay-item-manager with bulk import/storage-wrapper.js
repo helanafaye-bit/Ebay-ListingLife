@@ -10,6 +10,7 @@ class StorageWrapper {
         this.useBackend = false;
         this.backendAvailable = false;
         this.syncInProgress = false;
+        this.initialSyncAttempted = false; // Track if we've attempted initial sync
         this.pendingRequests = new Set(); // Track pending requests to prevent duplicates
         this.requestQueue = []; // Queue for rate limiting
         this.processingQueue = false;
@@ -37,9 +38,13 @@ class StorageWrapper {
                 console.log(`   Mode: ${health.storage_mode || 'local'}`);
                 console.log(`   Path: ${health.local_path || health.dropbox_folder || health.cloud_bucket || 'N/A'}`);
                 // Sync existing localStorage data to backend on first connection
-                if (!this.syncInProgress) {
-                    // Delay sync to avoid blocking page load, but do it sooner
-                    setTimeout(() => this.syncToBackend(), 500);
+                // IMPORTANT: Delay sync to allow app's loadData() to check backend first
+                // This prevents overwriting newer backend data with old localStorage data
+                if (!this.syncInProgress && !this.initialSyncAttempted) {
+                    // Delay sync to give app time to load from backend first (2 seconds)
+                    // The sync will check backend before syncing, so it's safe even if it runs earlier
+                    this.initialSyncAttempted = true;
+                    setTimeout(() => this.syncToBackend(), 2000);
                 }
             } else {
                 console.log(`⚠️ Backend returned status ${response.status}, using localStorage`);
@@ -60,7 +65,7 @@ class StorageWrapper {
         if (this.syncInProgress || !this.useBackend) return;
         
         this.syncInProgress = true;
-        console.log('🔄 Syncing localStorage data to backend...');
+        console.log('🔄 Checking backend storage before syncing...');
         
         try {
             // Collect all relevant localStorage keys
@@ -82,26 +87,76 @@ class StorageWrapper {
             }
 
             if (Object.keys(items).length > 0) {
-                // Try sync endpoint, fallback to individual saves
-                try {
-                    const response = await fetch(`${this.backendUrl.replace('/storage', '/storage/sync')}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ items })
-                    });
+                // CRITICAL: Check if backend already has data for each key before syncing
+                // This prevents overwriting newer backend data with old localStorage data
+                const itemsToSync = {};
+                let checkedCount = 0;
+                
+                for (const [key, value] of Object.entries(items)) {
+                    try {
+                        // Check if backend has data for this key
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 3000);
+                        
+                        const checkResponse = await fetch(`${this.backendUrl}/get`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ key }),
+                            signal: controller.signal
+                        });
+                        
+                        clearTimeout(timeoutId);
+                        
+                        if (checkResponse.ok) {
+                            const checkResult = await checkResponse.json();
+                            if (checkResult.value && checkResult.value.trim().length > 0) {
+                                // Backend already has data for this key - don't overwrite it
+                                console.log(`⚠️ Backend already has data for ${key}, skipping sync to prevent overwrite`);
+                                checkedCount++;
+                                continue;
+                            }
+                        }
+                        
+                        // Backend is empty for this key - safe to sync
+                        itemsToSync[key] = value;
+                        checkedCount++;
+                    } catch (checkError) {
+                        if (checkError.name !== 'AbortError') {
+                            console.warn(`Could not check backend for ${key}, will skip sync:`, checkError.message);
+                        }
+                        // If we can't check, don't sync to be safe
+                        checkedCount++;
+                    }
+                }
+                
+                if (Object.keys(itemsToSync).length > 0) {
+                    console.log(`🔄 Syncing ${Object.keys(itemsToSync).length} items to backend (${checkedCount - Object.keys(itemsToSync).length} skipped - backend has data)`);
                     
-                    if (response.ok) {
-                        const result = await response.json();
-                        console.log(`✅ Synced ${result.synced || Object.keys(items).length} items to backend`);
+                    // Try sync endpoint, fallback to individual saves
+                    try {
+                        const response = await fetch(`${this.backendUrl.replace('/storage', '/storage/sync')}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ items: itemsToSync })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            console.log(`✅ Synced ${result.synced || Object.keys(itemsToSync).length} items to backend`);
+                        }
+                    } catch (syncError) {
+                        // Fallback: sync items individually (but don't block)
+                        console.log('Batch sync not available, syncing individually...');
+                        for (const [key, value] of Object.entries(itemsToSync)) {
+                            this.queueBackendSave(key, value);
+                        }
                     }
-                } catch (syncError) {
-                    // Fallback: sync items individually (but don't block)
-                    console.log('Batch sync not available, syncing individually...');
-                    for (const [key, value] of Object.entries(items)) {
-                        this.queueBackendSave(key, value);
-                    }
+                } else {
+                    console.log(`✓ Backend already has all data. No sync needed (prevents overwriting newer data).`);
                 }
             }
         } catch (error) {

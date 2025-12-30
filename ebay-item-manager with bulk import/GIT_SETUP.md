@@ -42,3 +42,4 @@ New users should:
 
 The app will work correctly with empty data - users start with no categories or items until they add them.
 
+
