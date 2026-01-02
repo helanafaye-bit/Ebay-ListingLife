@@ -42,4 +42,39 @@ New users should:
 
 The app will work correctly with empty data - users start with no categories or items until they add them.
 
+## Cleaning Up Old Local Data Before Syncing
+
+**Important:** If you're switching between laptops or have old test data in your `listinglife_data/` folder, you should clean it up before syncing to Dropbox to prevent old data from overwriting your current data.
+
+### Steps to Clean Up:
+
+1. **Backup current data** (if needed):
+   - If you have important data in Dropbox, it's already backed up there
+   - If you only have local data you want to keep, make a backup copy of the `listinglife_data/` folder
+
+2. **Delete old local data**:
+   - Close the storage server if it's running
+   - Delete the entire `listinglife_data/` folder
+   - The folder will be recreated automatically when you start the server
+
+3. **Configure Dropbox**:
+   - Open the app Settings page
+   - Select "Dropbox" as storage mode
+   - Enter your Dropbox access token
+   - Click "Save Storage Settings"
+   - The server will automatically connect to Dropbox and load your data from there
+
+4. **Verify**:
+   - Check the server console - it should show "Dropbox storage initialized"
+   - Your data should load from Dropbox, not from local files
+   - New data will be saved to Dropbox automatically
+
+### Why This Matters:
+
+- If you have old test data in `listinglife_data/` from a different laptop, the sync process might try to upload that old data to Dropbox
+- The app checks if backend (Dropbox) already has data before syncing, but it's safer to start with a clean local folder
+- The `listinglife_data/` folder is already in `.gitignore`, so it won't be committed to GitHub
+
+
+
 

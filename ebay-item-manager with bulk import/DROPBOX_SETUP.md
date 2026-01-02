@@ -22,6 +22,8 @@ This guide explains how to configure ListingLife to save data to Dropbox instead
 8. **Copy the access token** (you'll need this)
 9. **Note**: The generated token will be short-lived (starts with `sl.u.`) and expires after ~4 hours. This is normal - Dropbox no longer offers long-lived tokens via the app console. Simply regenerate the token when it expires, or update it in your settings.
 
+**💡 For Long-Lived Access (Recommended):** See the "OAuth 2.0 with Refresh Tokens" section below to set up automatic token refresh so you don't have to manually update tokens every few hours.
+
 ### Step 2: Install Dropbox SDK
 
 Run the installation script or manually install:
@@ -223,6 +225,101 @@ If you created your app with "App folder" access:
 2. The folder name will be the same as your app name
 3. You can still use `DROPBOX_FOLDER` to specify a subfolder within the app folder
 4. Example: If your app is named "ListingLife", files will be in `/ListingLife/` by default
+
+## OAuth 2.0 with Refresh Tokens (Long-Lived Access)
+
+If you're tired of updating your Dropbox token every few hours, you can set up OAuth 2.0 with refresh tokens for automatic token renewal.
+
+### Benefits:
+- ✅ Tokens automatically refresh when they expire
+- ✅ No manual token updates needed
+- ✅ Long-term access without interruption
+
+### Setup Steps:
+
+1. **Get Your App Key and Secret:**
+   - Go to https://www.dropbox.com/developers/apps
+   - Select your app
+   - Go to the **"Settings"** tab
+   - Find **"App key"** and **"App secret"** (click "Show" to reveal the secret)
+   - Copy both values
+
+2. **Get Initial Access and Refresh Tokens:**
+   
+   You need to perform an OAuth flow to get both access and refresh tokens. Here's a simple Python script to do this:
+   
+   ```python
+   import requests
+   import base64
+   
+   APP_KEY = "your-app-key-here"
+   APP_SECRET = "your-app-secret-here"
+   REDIRECT_URI = "http://localhost:5000/oauth/callback"  # Or any URL you control
+   
+   # Step 1: Get authorization URL
+   auth_url = f"https://www.dropbox.com/oauth2/authorize?client_id={APP_KEY}&response_type=code&redirect_uri={REDIRECT_URI}"
+   print(f"Visit this URL: {auth_url}")
+   print("After authorizing, you'll be redirected. Copy the 'code' parameter from the URL.")
+   
+   # Step 2: Exchange code for tokens
+   auth_code = input("Paste the authorization code here: ")
+   
+   auth_string = f"{APP_KEY}:{APP_SECRET}"
+   auth_bytes = auth_string.encode('ascii')
+   auth_b64 = base64.b64encode(auth_bytes).decode('ascii')
+   
+   token_url = "https://api.dropbox.com/oauth2/token"
+   data = {
+       'code': auth_code,
+       'grant_type': 'authorization_code',
+       'redirect_uri': REDIRECT_URI
+   }
+   headers = {
+       'Authorization': f'Basic {auth_b64}',
+       'Content-Type': 'application/x-www-form-urlencoded'
+   }
+   
+   response = requests.post(token_url, data=data, headers=headers)
+   if response.status_code == 200:
+       tokens = response.json()
+       print(f"\n✅ Success! Here are your tokens:")
+       print(f"Access Token: {tokens['access_token']}")
+       print(f"Refresh Token: {tokens['refresh_token']}")
+       print(f"\nAdd these to your storage_config.json:")
+       print(f'"dropbox_access_token": "{tokens["access_token"]}",')
+       print(f'"dropbox_refresh_token": "{tokens["refresh_token"]}",')
+       print(f'"dropbox_app_key": "{APP_KEY}",')
+       print(f'"dropbox_app_secret": "{APP_SECRET}"')
+   else:
+       print(f"Error: {response.status_code} - {response.text}")
+   ```
+
+3. **Update Your Configuration:**
+   
+   Add the following to your `storage_config.json`:
+   ```json
+   {
+     "storage_mode": "dropbox",
+     "dropbox_access_token": "your-access-token",
+     "dropbox_refresh_token": "your-refresh-token",
+     "dropbox_app_key": "your-app-key",
+     "dropbox_app_secret": "your-app-secret",
+     "dropbox_folder": "/ListingLife"
+   }
+   ```
+
+4. **Restart the Server:**
+   
+   The server will now automatically refresh your access token when it expires. You'll see log messages like:
+   ```
+   ✅ Dropbox access token refreshed successfully
+   ```
+
+### Important Notes:
+- The refresh token doesn't expire (unless revoked)
+- The access token will be automatically refreshed when it expires
+- Your refresh token is stored in `storage_config.json` - keep it secure!
+- If you revoke access in Dropbox, you'll need to repeat the OAuth flow
 
 ## Support
 

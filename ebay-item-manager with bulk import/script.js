@@ -3228,70 +3228,145 @@ class EbayListingLife {
                                  window.storageWrapper.useBackend && 
                                  window.storageWrapper.backendAvailable;
         
-        // Try to load from store-specific key first, then fall back to old keys for backward compatibility
         let savedData = null;
         let loadedFromOldKey = false;
         let oldKeyUsed = null;
         let loadedFromBackend = false;
         
-        // Strategy: Check store-specific key first, but ALWAYS check old keys as fallback
-        // This ensures backward compatibility even if store system creates new default store
-        
-        // First, try store-specific key (if storeManager exists)
-        if (window.storeManager && storageKey !== 'EbayListingLife') {
-            savedData = localStorage.getItem(storageKey);
-            console.log('Data in store-specific key:', !!savedData);
-        }
-        
-        // Always check old keys (critical for backward compatibility)
-        // Also check ALL possible variations in case data was stored with different casing or formats
-        if (!savedData) {
-            const oldKeys = ['EbayListingLife', 'eBayItemManager', 'ebaylistinglife', 'ebayitemmanager'];
-            
-            // Also check all localStorage keys for any that might contain ListingLife data
-            const allKeys = Object.keys(localStorage);
-            const possibleKeys = allKeys.filter(key => {
-                const lower = key.toLowerCase();
-                return (lower.includes('ebay') && lower.includes('listing')) ||
-                       (lower.includes('ebay') && lower.includes('item') && lower.includes('manager')) ||
-                       (lower === 'ebaylistinglife') ||
-                       (lower === 'ebayitemmanager');
-            });
-            
-            // Combine old keys with found keys, removing duplicates
-            const keysToCheck = [...new Set([...oldKeys, ...possibleKeys])];
-            
-            for (const oldKey of keysToCheck) {
-                const data = localStorage.getItem(oldKey);
-                if (data && data.trim().length > 0) {
-                    // Verify it's valid data structure
-                    try {
-                        const parsed = JSON.parse(data);
-                        if (parsed.categories !== undefined || parsed.items !== undefined) {
-                            savedData = data;
-                            loadedFromOldKey = true;
-                            oldKeyUsed = oldKey;
-                            console.log('✓ Found data in old key:', oldKey, `(${parsed.categories?.length || 0} categories, ${parsed.items?.length || 0} items)`);
-                            break;
+        // CRITICAL: When using Dropbox/cloud storage, backend is the source of truth
+        // ALWAYS load from backend FIRST, before checking localStorage
+        // This ensures collaborative data is shared across laptops
+        if (backendAvailable && useBackendStorage) {
+            try {
+                console.log(`🔄 Loading from ${storageMode} storage (backend is source of truth)...`);
+                console.log(`   Storage key: ${storageKey}`);
+                console.log(`   Backend URL: http://127.0.0.1:5000/api/storage/get`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+                
+                const response = await fetch(`http://127.0.0.1:5000/api/storage/get`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ key: storageKey }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                console.log(`   Backend response status: ${response.status}`);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log(`   Backend response has value:`, !!result.value);
+                    if (result.value) {
+                        // Backend returned data - this is the source of truth for collaborative storage
+                        try {
+                            const backendData = typeof result.value === 'string' ? JSON.parse(result.value) : result.value;
+                            if (backendData.categories !== undefined || backendData.items !== undefined) {
+                                // ALWAYS use backend data when using Dropbox/cloud - it's shared across laptops
+                                const backendDataStr = JSON.stringify(backendData);
+                                savedData = backendDataStr;
+                                loadedFromBackend = true;
+                                console.log(`✅ Loaded data from ${storageMode} storage (${backendData.categories?.length || 0} categories, ${backendData.items?.length || 0} items)`);
+                                
+                                // Update localStorage with backend data (backend is source of truth for collaboration)
+                                // SAFE: This only updates localStorage, never deletes anything
+                                try {
+                                    const oldLocalData = localStorage.getItem(storageKey);
+                                    localStorage.setItem(storageKey, savedData);
+                                    console.log('✓ Updated localStorage with backend data');
+                                    
+                                    // Log if data was different (for debugging)
+                                    if (oldLocalData && oldLocalData !== savedData) {
+                                        console.log('ℹ️ localStorage had different data - updated with shared Dropbox data');
+                                    }
+                                } catch (cacheError) {
+                                    console.warn('Could not cache data in localStorage (quota may be full):', cacheError);
+                                    // Data is still loaded in memory, just not cached
+                                }
+                            }
+                        } catch (parseError) {
+                            console.error('Error parsing backend data:', parseError);
+                            // Fall back to localStorage data if available
                         }
-                    } catch (e) {
-                        console.warn('Invalid JSON in key:', oldKey, e.message);
+                    } else {
+                        console.log(`ℹ️ Backend returned no data for key: ${storageKey}`);
+                        // Backend has no data - fall back to localStorage
+                        // This happens on first use or if data hasn't been saved to Dropbox yet
                     }
+                } else {
+                    console.log(`⚠️ Backend returned ${response.status}, will check localStorage as fallback`);
                 }
+            } catch (backendError) {
+                if (backendError.name !== 'AbortError') {
+                    console.warn(`Could not load from backend storage:`, backendError.message);
+                }
+                // Will fall back to localStorage below
             }
         }
         
-        // Don't check other store-specific keys - each store should have its own data
-        // Only check old non-store keys for backward compatibility
-        
-        // ALWAYS try loading from backend if available (even if localStorage has data)
-        // This ensures we get the latest data from backend storage (Dropbox/cloud/local file)
-        // BUT: If localStorage has data and backend doesn't, we should sync localStorage to backend
-        if (backendAvailable) {
+        // Only check localStorage if we didn't successfully load from backend
+        // This ensures Dropbox data always takes precedence for collaboration
+        if (!loadedFromBackend) {
+            // Try to load from store-specific key first, then fall back to old keys for backward compatibility
+            if (!savedData) {
+                // First, try store-specific key (if storeManager exists)
+                if (window.storeManager && storageKey !== 'EbayListingLife') {
+                    savedData = localStorage.getItem(storageKey);
+                    console.log('Data in store-specific key:', !!savedData);
+                }
+                
+                // Always check old keys (critical for backward compatibility)
+                // Also check ALL possible variations in case data was stored with different casing or formats
+                if (!savedData) {
+                    const oldKeys = ['EbayListingLife', 'eBayItemManager', 'ebaylistinglife', 'ebayitemmanager'];
+                    
+                    // Also check all localStorage keys for any that might contain ListingLife data
+                    const allKeys = Object.keys(localStorage);
+                    const possibleKeys = allKeys.filter(key => {
+                        const lower = key.toLowerCase();
+                        return (lower.includes('ebay') && lower.includes('listing')) ||
+                               (lower.includes('ebay') && lower.includes('item') && lower.includes('manager')) ||
+                               (lower === 'ebaylistinglife') ||
+                               (lower === 'ebayitemmanager');
+                    });
+                    
+                    // Combine old keys with found keys, removing duplicates
+                    const keysToCheck = [...new Set([...oldKeys, ...possibleKeys])];
+                    
+                    for (const oldKey of keysToCheck) {
+                        const data = localStorage.getItem(oldKey);
+                        if (data && data.trim().length > 0) {
+                            // Verify it's valid data structure
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (parsed.categories !== undefined || parsed.items !== undefined) {
+                                    savedData = data;
+                                    loadedFromOldKey = true;
+                                    oldKeyUsed = oldKey;
+                                    console.log('✓ Found data in old key:', oldKey, `(${parsed.categories?.length || 0} categories, ${parsed.items?.length || 0} items)`);
+                                    break;
+                                }
+                            } catch (e) {
+                                console.warn('Invalid JSON in key:', oldKey, e.message);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // If we found localStorage data and using Dropbox, log that it will sync
+            if (savedData && useBackendStorage) {
+                console.log('ℹ️ Using localStorage data (Dropbox empty). Data will sync to Dropbox on next save.');
+            }
+        } else if (backendAvailable && !useBackendStorage) {
+            // Backend available but using local storage mode - check backend but localStorage takes precedence
             try {
                 console.log(`Checking backend storage for latest data (key: ${storageKey})...`);
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
                 
                 const response = await fetch(`http://127.0.0.1:5000/api/storage/get`, {
                     method: 'POST',
@@ -3307,11 +3382,9 @@ class EbayListingLife {
                 if (response.ok) {
                     const result = await response.json();
                     if (result.value) {
-                        // Backend returned data - parse it
                         try {
                             const backendData = typeof result.value === 'string' ? JSON.parse(result.value) : result.value;
                             if (backendData.categories !== undefined || backendData.items !== undefined) {
-                                // Backend data takes precedence - it's the source of truth
                                 const backendDataStr = JSON.stringify(backendData);
                                 
                                 // Only use backend data if it's different or if we had no localStorage data
@@ -3320,7 +3393,6 @@ class EbayListingLife {
                                     loadedFromBackend = true;
                                     console.log(`✓ Loaded data from backend storage (${backendData.categories?.length || 0} categories, ${backendData.items?.length || 0} items)`);
                                     
-                                    // Cache it in localStorage for faster future loads
                                     try {
                                         localStorage.setItem(storageKey, savedData);
                                         console.log('✓ Cached backend data in localStorage');
@@ -3333,31 +3405,13 @@ class EbayListingLife {
                             }
                         } catch (parseError) {
                             console.error('Error parsing backend data:', parseError);
-                            // Fall back to localStorage data if available
-                        }
-                    } else {
-                        console.log('Backend returned no data for key:', storageKey);
-                        // Backend has no data - this could mean:
-                        // 1. This is a new store/laptop with no data yet (OK - use localStorage if available)
-                        // 2. Backend storage was just configured (OK - use localStorage if available)
-                        // 3. Temporary backend error (already handled by fallback to localStorage)
-                        // DO NOT auto-sync localStorage to backend here because:
-                        // - If backend is the source of truth, localStorage might have old data
-                        // - If this is a new laptop, backend should stay empty until user makes changes
-                        // - Auto-sync can overwrite newer backend data with old localStorage data
-                        // Backend will be populated naturally when user saves changes via saveData()
-                        if (savedData) {
-                            console.log('Using localStorage data as backend is empty. Backend will be updated on next save.');
                         }
                     }
-                } else {
-                    console.log(`Backend returned ${response.status}, using localStorage data if available`);
                 }
             } catch (backendError) {
                 if (backendError.name !== 'AbortError') {
                     console.warn(`Could not load from backend storage:`, backendError.message);
                 }
-                // Continue with localStorage data if available - don't fail completely
             }
         }
         
@@ -3380,6 +3434,7 @@ class EbayListingLife {
                 this.cleanupOrphanedItems(storageKey);
                 
                 // If we loaded from old key, migrate to store-specific key
+                // SAFETY: Never deletes data when using Dropbox - old keys are preserved
                 if (loadedFromOldKey && window.storeManager) {
                     const currentStoreData = localStorage.getItem(storageKey);
                     if (!currentStoreData) {
@@ -3387,18 +3442,37 @@ class EbayListingLife {
                         try {
                             await this.saveData();
                             console.log('✓ Migration complete - data saved to:', storageKey);
-                            // Clean up old key after successful migration (only if it's a non-store key)
-                            if (oldKeyUsed === 'eBayItemManager') {
-                                localStorage.removeItem('eBayItemManager');
-                                console.log('Removed old key: eBayItemManager');
-                            } else if (oldKeyUsed === 'EbayListingLife' && storageKey !== 'EbayListingLife') {
-                                // Only remove if we're using store manager (to avoid breaking non-store data)
-                                localStorage.removeItem('EbayListingLife');
-                                console.log('Removed old key: EbayListingLife');
+                            
+                            // SAFETY CHECK: Only remove old keys in LOCAL mode, NEVER in Dropbox mode
+                            // In Dropbox mode, backend is source of truth, so keep all localStorage keys as backup
+                            if (!useBackendStorage) {
+                                // Local mode only: Safe to cleanup old keys AFTER successful save
+                                if (oldKeyUsed === 'eBayItemManager') {
+                                    // Double-check new key has data before removing old
+                                    const verifyNewData = localStorage.getItem(storageKey);
+                                    if (verifyNewData) {
+                                        localStorage.removeItem('eBayItemManager');
+                                        console.log('Removed old key: eBayItemManager (local mode only)');
+                                    } else {
+                                        console.warn('⚠️ Safety check: New key empty, keeping old key');
+                                    }
+                                } else if (oldKeyUsed === 'EbayListingLife' && storageKey !== 'EbayListingLife') {
+                                    const verifyNewData = localStorage.getItem(storageKey);
+                                    if (verifyNewData) {
+                                        localStorage.removeItem('EbayListingLife');
+                                        console.log('Removed old key: EbayListingLife (local mode only)');
+                                    } else {
+                                        console.warn('⚠️ Safety check: New key empty, keeping old key');
+                                    }
+                                }
+                            } else {
+                                // Dropbox mode: Keep old localStorage keys as backup (backend is source of truth)
+                                console.log('ℹ️ Dropbox mode: Keeping old localStorage keys for safety (backend is source of truth)');
                             }
                         } catch (migrationErr) {
                             console.error('Error during migration:', migrationErr);
                             // Don't fail - data is already loaded, just migration failed
+                            // OLD DATA IS PRESERVED - nothing deleted on error
                         }
                     } else {
                         console.log('Data already exists in store-specific key, skipping migration');

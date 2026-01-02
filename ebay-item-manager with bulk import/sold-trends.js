@@ -1523,15 +1523,74 @@ class SoldItemsTrends {
         // Get store-specific key
         const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
         
-        // Try to load from store-specific key first, then fall back to old keys for backward compatibility
-        let saved = localStorage.getItem(storageKey);
-        let loadedFromOldKey = false;
+        // Check if using Dropbox/cloud storage (backend is source of truth)
+        const storageConfig = this.getStorageConfig ? this.getStorageConfig() : 
+            (window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null);
+        const storageMode = storageConfig?.storage_mode || 'local';
+        const useBackendStorage = storageMode === 'dropbox' || storageMode === 'cloud';
+        const backendAvailable = window.storageWrapper && 
+                                 window.storageWrapper.useBackend && 
+                                 window.storageWrapper.backendAvailable;
         
+        let saved = null;
+        let loadedFromOldKey = false;
+        let loadedFromBackend = false;
+        
+        // CRITICAL: When using Dropbox/cloud, always load from backend first
+        if (backendAvailable && useBackendStorage) {
+            try {
+                console.log(`🔄 Loading SoldItemsTrends from ${storageMode} storage...`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                const response = await fetch(`http://127.0.0.1:5000/api/storage/get`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ key: storageKey }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.value) {
+                        try {
+                            const backendData = typeof result.value === 'string' ? JSON.parse(result.value) : result.value;
+                            saved = JSON.stringify(backendData);
+                            loadedFromBackend = true;
+                            console.log(`✅ Loaded SoldItemsTrends from ${storageMode} storage`);
+                            
+                            // Update localStorage with backend data
+                            try {
+                                localStorage.setItem(storageKey, saved);
+                                console.log('✓ Updated localStorage with backend data');
+                            } catch (cacheError) {
+                                console.warn('Could not cache data in localStorage:', cacheError);
+                            }
+                        } catch (parseError) {
+                            console.error('Error parsing backend data:', parseError);
+                        }
+                    }
+                }
+            } catch (backendError) {
+                if (backendError.name !== 'AbortError') {
+                    console.warn(`Could not load from backend storage:`, backendError.message);
+                }
+            }
+        }
+        
+        // Fall back to localStorage if backend didn't provide data
         if (!saved) {
-            // Try old key without store suffix
-            saved = localStorage.getItem('SoldItemsTrends');
-            if (saved) {
-                loadedFromOldKey = true;
+            saved = localStorage.getItem(storageKey);
+            if (!saved) {
+                // Try old key without store suffix
+                saved = localStorage.getItem('SoldItemsTrends');
+                if (saved) {
+                    loadedFromOldKey = true;
+                }
             }
         }
         

@@ -147,45 +147,100 @@ class StoreManager {
 
     async loadStores() {
         try {
-            let saved = localStorage.getItem('ListingLifeStores');
-            if (saved) {
-                this.stores = JSON.parse(saved);
-            } else {
-                // Try loading from backend if available
-                if (window.storageWrapper && window.storageWrapper.useBackend && window.storageWrapper.backendAvailable) {
-                    try {
-                        console.log('No stores in localStorage, trying to load from backend...');
-                        const response = await fetch('http://127.0.0.1:5000/api/storage/get', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ key: 'ListingLifeStores' })
-                        });
-                        
-                        if (response.ok) {
-                            const result = await response.json();
-                            if (result.value) {
-                                const backendStores = Array.isArray(result.value) ? result.value : JSON.parse(result.value);
-                                this.stores = backendStores;
-                                // Cache in localStorage
-                                localStorage.setItem('ListingLifeStores', JSON.stringify(backendStores));
-                                console.log(`✓ Loaded ${backendStores.length} store(s) from backend`);
-                                return;
-                            }
+            // Check if using Dropbox/cloud storage (backend is source of truth for collaboration)
+            const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
+            const storageMode = storageConfig?.storage_mode || 'local';
+            const useBackendStorage = storageMode === 'dropbox' || storageMode === 'cloud';
+            const backendAvailable = window.storageWrapper && 
+                                     window.storageWrapper.useBackend && 
+                                     window.storageWrapper.backendAvailable;
+            
+            let loadedFromBackend = false;
+            
+            // CRITICAL: When using Dropbox/cloud, ALWAYS load stores from backend FIRST
+            // This ensures both laptops see the same stores and can share data
+            if (backendAvailable && useBackendStorage) {
+                try {
+                    console.log(`🔄 Loading stores from ${storageMode} storage (backend is source of truth)...`);
+                    const response = await fetch('http://127.0.0.1:5000/api/storage/get', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ key: 'ListingLifeStores' })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.value) {
+                            const backendStores = Array.isArray(result.value) ? result.value : JSON.parse(result.value);
+                            this.stores = backendStores;
+                            loadedFromBackend = true;
+                            // Update localStorage with backend data
+                            localStorage.setItem('ListingLifeStores', JSON.stringify(backendStores));
+                            console.log(`✅ Loaded ${backendStores.length} store(s) from ${storageMode} storage`);
+                            console.log(`   Stores: ${backendStores.map(s => s.name).join(', ')}`);
+                            return;
+                        } else {
+                            console.log('ℹ️ No stores in Dropbox yet, will check localStorage as fallback');
                         }
-                    } catch (backendError) {
-                        console.warn('Could not load stores from backend:', backendError.message);
                     }
+                } catch (backendError) {
+                    console.warn('Could not load stores from backend:', backendError.message);
+                    // Fall back to localStorage below
                 }
-                
-                // Create default store if none exist
-                this.stores = [{
-                    id: 'default',
-                    name: 'Default Store',
-                    createdAt: new Date().toISOString()
-                }];
-                this.saveStores();
+            }
+            
+            // Only check localStorage if we didn't load from backend
+            // This ensures Dropbox stores take precedence for collaboration
+            if (!loadedFromBackend) {
+                let saved = localStorage.getItem('ListingLifeStores');
+                if (saved) {
+                    this.stores = JSON.parse(saved);
+                    console.log(`✓ Loaded ${this.stores.length} store(s) from localStorage`);
+                    
+                    // If using Dropbox but didn't load from backend, sync stores to Dropbox
+                    if (useBackendStorage && backendAvailable) {
+                        console.log('ℹ️ Syncing stores to Dropbox...');
+                        this.saveStores(); // This will sync to Dropbox via storage-wrapper
+                    }
+                } else {
+                    // Try loading from backend if available (even if not using backend storage mode)
+                    if (backendAvailable) {
+                        try {
+                            console.log('No stores in localStorage, trying to load from backend...');
+                            const response = await fetch('http://127.0.0.1:5000/api/storage/get', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ key: 'ListingLifeStores' })
+                            });
+                            
+                            if (response.ok) {
+                                const result = await response.json();
+                                if (result.value) {
+                                    const backendStores = Array.isArray(result.value) ? result.value : JSON.parse(result.value);
+                                    this.stores = backendStores;
+                                    // Cache in localStorage
+                                    localStorage.setItem('ListingLifeStores', JSON.stringify(backendStores));
+                                    console.log(`✓ Loaded ${backendStores.length} store(s) from backend`);
+                                    return;
+                                }
+                            }
+                        } catch (backendError) {
+                            console.warn('Could not load stores from backend:', backendError.message);
+                        }
+                    }
+                    
+                    // Create default store if none exist
+                    this.stores = [{
+                        id: 'default',
+                        name: 'Default Store',
+                        createdAt: new Date().toISOString()
+                    }];
+                    this.saveStores();
+                }
             }
         } catch (error) {
             console.error('Error loading stores:', error);
@@ -198,10 +253,31 @@ class StoreManager {
         }
     }
 
-    saveStores() {
+    async saveStores() {
         try {
-            // localStorage.setItem is automatically synced to backend by storage-wrapper.js
+            // Save to localStorage first (for immediate access)
             localStorage.setItem('ListingLifeStores', JSON.stringify(this.stores));
+            
+            // CRITICAL: If using Dropbox/cloud, save directly to backend
+            // This ensures stores are synced immediately for collaboration
+            const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
+            const storageMode = storageConfig?.storage_mode || 'local';
+            const useBackendStorage = storageMode === 'dropbox' || storageMode === 'cloud';
+            const backendAvailable = window.storageWrapper && 
+                                     window.storageWrapper.useBackend && 
+                                     window.storageWrapper.backendAvailable;
+            
+            if (useBackendStorage && backendAvailable) {
+                try {
+                    // Save directly to backend (Dropbox/cloud) for immediate sync
+                    await window.storageWrapper.saveToBackend('ListingLifeStores', this.stores);
+                    console.log(`✅ Stores saved to ${storageMode} storage (${this.stores.length} store(s))`);
+                    console.log(`   Store names: ${this.stores.map(s => s.name).join(', ')}`);
+                } catch (backendError) {
+                    console.error(`Failed to save stores to ${storageMode}:`, backendError);
+                    // Continue - at least localStorage is saved
+                }
+            }
         } catch (error) {
             console.error('Error saving stores:', error);
         }
@@ -489,7 +565,7 @@ class StoreManager {
         storeNameInput.focus();
     }
 
-    handleStoreFormSubmit() {
+    async handleStoreFormSubmit() {
         const storeNameInput = document.getElementById('storeName');
         if (!storeNameInput) return;
 
@@ -511,12 +587,51 @@ class StoreManager {
                 }
                 store.name = name;
                 store.updatedAt = new Date().toISOString();
-                this.saveStores();
+                await this.saveStores();
                 this.updateStoreDropdown();
                 this.showNotification('Store updated successfully.', 'success');
             }
         } else {
             // Add new store
+            // CRITICAL: Check if store already exists in Dropbox before creating
+            // This prevents duplicate stores when using the same Dropbox account
+            const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
+            const storageMode = storageConfig?.storage_mode || 'local';
+            const useBackendStorage = storageMode === 'dropbox' || storageMode === 'cloud';
+            const backendAvailable = window.storageWrapper && 
+                                     window.storageWrapper.useBackend && 
+                                     window.storageWrapper.backendAvailable;
+            
+            // If using Dropbox, check if store already exists in Dropbox
+            if (useBackendStorage && backendAvailable) {
+                try {
+                    const response = await fetch('http://127.0.0.1:5000/api/storage/get', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: 'ListingLifeStores' })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.value) {
+                            const dropboxStores = Array.isArray(result.value) ? result.value : JSON.parse(result.value);
+                            const dropboxStoreExists = dropboxStores.some(s => s.name.toLowerCase() === name.toLowerCase());
+                            
+                            if (dropboxStoreExists) {
+                                this.showNotification(`Store "${name}" already exists in Dropbox. Please select it from the store dropdown instead.`, 'warning');
+                                // Reload stores from Dropbox to get the existing one
+                                await this.loadStores();
+                                this.updateStoreDropdown();
+                                return;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not check Dropbox for existing stores:', error);
+                    // Continue with creation - better to create than fail
+                }
+            }
+            
             const nameExists = this.stores.some(s => s.name.toLowerCase() === name.toLowerCase());
             if (nameExists) {
                 this.showNotification('A store with this name already exists.', 'warning');
@@ -546,7 +661,7 @@ class StoreManager {
                 createdAt: new Date().toISOString()
             };
             this.stores.push(newStore);
-            this.saveStores();
+            await this.saveStores(); // Make sure it saves to Dropbox immediately
             this.updateStoreDropdown();
             
             // Initialize empty data for the new store to prevent it from loading data from other stores
@@ -642,7 +757,7 @@ class StoreManager {
 
         // Remove store from list
         this.stores = this.stores.filter(s => s.id !== storeId);
-        this.saveStores();
+        await this.saveStores();
 
         // If deleted store was current, switch to first available (or null if no stores left)
         if (this.currentStoreId === storeId) {

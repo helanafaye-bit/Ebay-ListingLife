@@ -111,7 +111,16 @@ class StorageWrapper {
                         
                         if (checkResponse.ok) {
                             const checkResult = await checkResponse.json();
-                            if (checkResult.value && checkResult.value.trim().length > 0) {
+                            // checkResult.value can be an object, string, or null
+                            // Check if it exists and has content (for objects, check if it has keys; for strings, check length)
+                            const hasValue = checkResult.value !== null && checkResult.value !== undefined && 
+                                (typeof checkResult.value === 'string' 
+                                    ? checkResult.value.trim().length > 0 
+                                    : (typeof checkResult.value === 'object' 
+                                        ? Object.keys(checkResult.value).length > 0 
+                                        : true));
+                            
+                            if (hasValue) {
                                 // Backend already has data for this key - don't overwrite it
                                 console.log(`⚠️ Backend already has data for ${key}, skipping sync to prevent overwrite`);
                                 checkedCount++;

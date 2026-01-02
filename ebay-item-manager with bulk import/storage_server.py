@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import logging
+import gzip
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +23,9 @@ STORAGE_MODE = 'local'
 LOCAL_STORAGE_PATH = Path('./listinglife_data')
 CLOUD_BUCKET = None
 DROPBOX_ACCESS_TOKEN = None
+DROPBOX_REFRESH_TOKEN = None
+DROPBOX_APP_KEY = None
+DROPBOX_APP_SECRET = None
 DROPBOX_FOLDER = '/ListingLife'
 s3_client = None
 dropbox_client = None
@@ -29,14 +33,37 @@ dropbox = None
 
 def initialize_storage():
     """Initialize storage based on current configuration"""
-    global STORAGE_MODE, LOCAL_STORAGE_PATH, CLOUD_BUCKET, DROPBOX_ACCESS_TOKEN, DROPBOX_FOLDER
+    global STORAGE_MODE, LOCAL_STORAGE_PATH, CLOUD_BUCKET, DROPBOX_ACCESS_TOKEN, DROPBOX_REFRESH_TOKEN
+    global DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_FOLDER
     global s3_client, dropbox_client, dropbox
     
-    STORAGE_MODE = os.getenv('STORAGE_MODE', 'local').lower()
-    LOCAL_STORAGE_PATH = Path(os.getenv('LOCAL_STORAGE_PATH', './listinglife_data'))
-    CLOUD_BUCKET = os.getenv('S3_BUCKET', None)
-    DROPBOX_ACCESS_TOKEN = os.getenv('DROPBOX_ACCESS_TOKEN', None)
-    DROPBOX_FOLDER = os.getenv('DROPBOX_FOLDER', '/ListingLife')
+    # First, try to load from config file (takes precedence over env vars)
+    config = load_config_file()
+    if config:
+        STORAGE_MODE = config.get('storage_mode', 'local').lower()
+        LOCAL_STORAGE_PATH = Path(config.get('local_storage_path', './listinglife_data'))
+        CLOUD_BUCKET = config.get('s3_bucket', None)
+        DROPBOX_ACCESS_TOKEN = config.get('dropbox_access_token', None)
+        DROPBOX_REFRESH_TOKEN = config.get('dropbox_refresh_token', None)
+        DROPBOX_APP_KEY = config.get('dropbox_app_key', None)
+        DROPBOX_APP_SECRET = config.get('dropbox_app_secret', None)
+        DROPBOX_FOLDER = config.get('dropbox_folder', '/ListingLife')
+        # Also set env vars for AWS if provided
+        if config.get('aws_access_key_id'):
+            os.environ['AWS_ACCESS_KEY_ID'] = config['aws_access_key_id']
+        if config.get('aws_secret_access_key'):
+            os.environ['AWS_SECRET_ACCESS_KEY'] = config['aws_secret_access_key']
+        if config.get('aws_region'):
+            os.environ['AWS_REGION'] = config['aws_region']
+        logger.info(f"Loaded storage config from file: mode={STORAGE_MODE}")
+    else:
+        # Fall back to environment variables
+        STORAGE_MODE = os.getenv('STORAGE_MODE', 'local').lower()
+        LOCAL_STORAGE_PATH = Path(os.getenv('LOCAL_STORAGE_PATH', './listinglife_data'))
+        CLOUD_BUCKET = os.getenv('S3_BUCKET', None)
+        DROPBOX_ACCESS_TOKEN = os.getenv('DROPBOX_ACCESS_TOKEN', None)
+        DROPBOX_FOLDER = os.getenv('DROPBOX_FOLDER', '/ListingLife')
+        logger.info(f"Using environment variables for storage config: mode={STORAGE_MODE}")
     
     # Initialize storage
     if STORAGE_MODE == 'local':
@@ -200,11 +227,11 @@ def initialize_storage():
 initialize_storage()
 
 def save_to_local(key, data):
-    """Save data to local file"""
+    """Save data to local file (compact JSON, no indent to save space)"""
     try:
         file_path = LOCAL_STORAGE_PATH / f"{key}.json"
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
         logger.info(f"Saved to local: {key}")
         return True
     except Exception as e:
@@ -226,60 +253,142 @@ def load_from_local(key):
         return None
 
 def save_to_cloud(key, data):
-    """Save data to cloud storage (S3)"""
+    """Save data to cloud storage (S3) with compression"""
     if not s3_client:
         raise Exception("S3 client not initialized")
     
     try:
-        json_data = json.dumps(data, ensure_ascii=False)
+        # Use compact JSON and compress to save space
+        json_data = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+        compressed_data = gzip.compress(json_data.encode('utf-8'))
+        
         s3_client.put_object(
             Bucket=CLOUD_BUCKET,
-            Key=f"listinglife/{key}.json",
-            Body=json_data.encode('utf-8'),
-            ContentType='application/json'
+            Key=f"listinglife/{key}.json.gz",
+            Body=compressed_data,
+            ContentType='application/gzip',
+            ContentEncoding='gzip'
         )
-        logger.info(f"Saved to cloud: {key}")
+        logger.info(f"Saved to cloud: {key} (compressed)")
         return True
     except Exception as e:
         logger.error(f"Error saving to cloud {key}: {e}")
         raise
 
 def load_from_cloud(key):
-    """Load data from cloud storage (S3)"""
+    """Load data from cloud storage (S3) - supports compressed and uncompressed"""
     if not s3_client:
         raise Exception("S3 client not initialized")
     
     try:
-        response = s3_client.get_object(
-            Bucket=CLOUD_BUCKET,
-            Key=f"listinglife/{key}.json"
-        )
-        data = json.loads(response['Body'].read().decode('utf-8'))
-        logger.info(f"Loaded from cloud: {key}")
-        return data
-    except s3_client.exceptions.NoSuchKey:
-        logger.info(f"Key not found in cloud: {key}")
-        return None
+        # Try compressed file first
+        try:
+            response = s3_client.get_object(
+                Bucket=CLOUD_BUCKET,
+                Key=f"listinglife/{key}.json.gz"
+            )
+            compressed_data = response['Body'].read()
+            decompressed_data = gzip.decompress(compressed_data)
+            data = json.loads(decompressed_data.decode('utf-8'))
+            logger.info(f"Loaded from cloud: {key} (compressed)")
+            return data
+        except s3_client.exceptions.NoSuchKey:
+            # Try uncompressed for backward compatibility
+            try:
+                response = s3_client.get_object(
+                    Bucket=CLOUD_BUCKET,
+                    Key=f"listinglife/{key}.json"
+                )
+                data = json.loads(response['Body'].read().decode('utf-8'))
+                logger.info(f"Loaded from cloud: {key} (uncompressed)")
+                return data
+            except s3_client.exceptions.NoSuchKey:
+                logger.info(f"Key not found in cloud: {key}")
+                return None
     except Exception as e:
         logger.error(f"Error loading from cloud {key}: {e}")
         return None
 
+def refresh_dropbox_token():
+    """Refresh Dropbox access token using refresh token"""
+    global DROPBOX_ACCESS_TOKEN, dropbox_client, dropbox
+    
+    if not DROPBOX_REFRESH_TOKEN or not DROPBOX_APP_KEY or not DROPBOX_APP_SECRET:
+        return False
+    
+    try:
+        import requests
+        import base64
+        
+        # OAuth 2.0 token refresh endpoint
+        url = 'https://api.dropbox.com/oauth2/token'
+        auth_string = f"{DROPBOX_APP_KEY}:{DROPBOX_APP_SECRET}"
+        auth_bytes = auth_string.encode('ascii')
+        auth_b64 = base64.b64encode(auth_bytes).decode('ascii')
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': DROPBOX_REFRESH_TOKEN
+        }
+        
+        headers = {
+            'Authorization': f'Basic {auth_b64}',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        
+        response = requests.post(url, data=data, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            DROPBOX_ACCESS_TOKEN = token_data.get('access_token')
+            
+            # Update refresh token if a new one is provided
+            if 'refresh_token' in token_data:
+                DROPBOX_REFRESH_TOKEN = token_data['refresh_token']
+                # Save updated tokens to config
+                config = load_config_file()
+                if config:
+                    config['dropbox_access_token'] = DROPBOX_ACCESS_TOKEN
+                    config['dropbox_refresh_token'] = DROPBOX_REFRESH_TOKEN
+                    save_config_file(config)
+            
+            # Recreate Dropbox client with new token
+            dropbox_client = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+            logger.info("✅ Dropbox access token refreshed successfully")
+            return True
+        else:
+            logger.error(f"Failed to refresh Dropbox token: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Error refreshing Dropbox token: {e}")
+        return False
+
 def save_to_dropbox(key, data):
-    """Save data to Dropbox"""
+    """Save data to Dropbox with compression"""
+    global dropbox_client
+    
     if not dropbox_client or not dropbox:
         raise Exception("Dropbox client not initialized")
     
     try:
-        json_data = json.dumps(data, ensure_ascii=False)
-        file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json"
+        # Use compact JSON (no indent) and compress with gzip to save space
+        json_data = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+        compressed_data = gzip.compress(json_data.encode('utf-8'))
         
-        # Upload to Dropbox
+        # Save as .json.gz to indicate it's compressed
+        file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json.gz"
+        
+        # Upload compressed data to Dropbox
         dropbox_client.files_upload(
-            json_data.encode('utf-8'),
+            compressed_data,
             file_path,
             mode=dropbox.files.WriteMode('overwrite')
         )
-        logger.info(f"Saved to Dropbox: {key}")
+        
+        original_size = len(json_data.encode('utf-8'))
+        compressed_size = len(compressed_data)
+        compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+        logger.info(f"Saved to Dropbox: {key} ({compressed_size}B compressed, {compression_ratio:.1f}% reduction)")
         return True
     except dropbox.exceptions.AuthError as auth_error:
         error_msg = str(auth_error)
@@ -290,15 +399,36 @@ def save_to_dropbox(key, data):
         )
         
         if is_expired:
-            raise Exception(
-                "Your Dropbox access token has expired (this is normal for short-lived tokens).\n\n"
-                "To fix:\n"
-                "1. Go to https://www.dropbox.com/developers/apps\n"
-                "2. Select your app -> Settings -> OAuth 2\n"
-                "3. Click 'Generate' under 'Generated access token'\n"
-                "4. Copy the new token\n"
-                "5. Update it in your app settings (no server restart needed)"
-            )
+            # Try to refresh token if we have refresh token
+            if DROPBOX_REFRESH_TOKEN and refresh_dropbox_token():
+                # Retry the save operation with new token
+                try:
+                    json_data = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+                    compressed_data = gzip.compress(json_data.encode('utf-8'))
+                    file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json.gz"
+                    dropbox_client.files_upload(
+                        compressed_data,
+                        file_path,
+                        mode=dropbox.files.WriteMode('overwrite')
+                    )
+                    original_size = len(json_data.encode('utf-8'))
+                    compressed_size = len(compressed_data)
+                    compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+                    logger.info(f"Saved to Dropbox: {key} ({compressed_size}B compressed, {compression_ratio:.1f}% reduction) [after token refresh]")
+                    return True
+                except Exception as retry_error:
+                    raise Exception(f"Token refreshed but save failed: {retry_error}")
+            else:
+                raise Exception(
+                    "Your Dropbox access token has expired.\n\n"
+                    "To fix:\n"
+                    "1. Go to https://www.dropbox.com/developers/apps\n"
+                    "2. Select your app -> Settings -> OAuth 2\n"
+                    "3. Click 'Generate' under 'Generated access token'\n"
+                    "4. Copy the new token\n"
+                    "5. Update it in your app settings (no server restart needed)\n\n"
+                    "For long-lived access, set up OAuth 2.0 with refresh tokens (see DROPBOX_SETUP.md)"
+                )
         raise Exception(f"Dropbox authentication error: {auth_error}")
     except Exception as e:
         error_msg = str(e)
@@ -331,18 +461,71 @@ def save_to_dropbox(key, data):
         raise
 
 def load_from_dropbox(key):
-    """Load data from Dropbox"""
+    """Load data from Dropbox (supports both compressed and uncompressed)"""
+    global dropbox_client
+    
     if not dropbox_client or not dropbox:
         raise Exception("Dropbox client not initialized")
     
     try:
-        file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json"
+        # Try compressed file first (.json.gz)
+        file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json.gz"
+        try:
+            _, response = dropbox_client.files_download(file_path)
+            # Decompress and parse
+            decompressed_data = gzip.decompress(response.content)
+            data = json.loads(decompressed_data.decode('utf-8'))
+            logger.info(f"Loaded from Dropbox: {key} (compressed)")
+            return data
+        except dropbox.exceptions.ApiError as e:
+            # If compressed file not found, try uncompressed (.json) for backward compatibility
+            if e.error.is_path() and e.error.get_path().is_not_found():
+                file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json"
+                try:
+                    _, response = dropbox_client.files_download(file_path)
+                    data = json.loads(response.content.decode('utf-8'))
+                    logger.info(f"Loaded from Dropbox: {key} (uncompressed, consider re-saving to compress)")
+                    return data
+                except dropbox.exceptions.ApiError as e2:
+                    if e2.error.is_path() and e2.error.get_path().is_not_found():
+                        logger.info(f"Key not found in Dropbox: {key}")
+                        return None
+                    raise
+            raise
+    except dropbox.exceptions.AuthError as auth_error:
+        error_msg = str(auth_error)
+        is_expired = (
+            'expired_access_token' in error_msg or
+            (hasattr(auth_error, 'error') and hasattr(auth_error.error, 'is_expired') and auth_error.error.is_expired())
+        )
         
-        # Download from Dropbox
-        _, response = dropbox_client.files_download(file_path)
-        data = json.loads(response.content.decode('utf-8'))
-        logger.info(f"Loaded from Dropbox: {key}")
-        return data
+        if is_expired and DROPBOX_REFRESH_TOKEN and refresh_dropbox_token():
+            # Retry the load operation with new token
+            try:
+                file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json.gz"
+                try:
+                    _, response = dropbox_client.files_download(file_path)
+                    decompressed_data = gzip.decompress(response.content)
+                    data = json.loads(decompressed_data.decode('utf-8'))
+                    logger.info(f"Loaded from Dropbox: {key} (compressed) [after token refresh]")
+                    return data
+                except dropbox.exceptions.ApiError as e:
+                    if e.error.is_path() and e.error.get_path().is_not_found():
+                        file_path = f"{DROPBOX_FOLDER.rstrip('/')}/{key}.json"
+                        try:
+                            _, response = dropbox_client.files_download(file_path)
+                            data = json.loads(response.content.decode('utf-8'))
+                            logger.info(f"Loaded from Dropbox: {key} (uncompressed) [after token refresh]")
+                            return data
+                        except dropbox.exceptions.ApiError:
+                            logger.info(f"Key not found in Dropbox: {key}")
+                            return None
+            except Exception as retry_error:
+                logger.error(f"Error loading from Dropbox {key} after token refresh: {retry_error}")
+                return None
+        else:
+            logger.error(f"Error loading from Dropbox {key}: {auth_error}")
+            return None
     except dropbox.exceptions.ApiError as e:
         if e.error.is_path() and e.error.get_path().is_not_found():
             logger.info(f"Key not found in Dropbox: {key}")
@@ -624,15 +807,12 @@ def set_storage_config():
     try:
         config = request.json
         if save_config_file(config):
-            # If Dropbox token was updated, re-initialize storage
-            if config.get('storage_mode') == 'dropbox' and config.get('dropbox_access_token'):
-                os.environ['STORAGE_MODE'] = 'dropbox'
-                os.environ['DROPBOX_ACCESS_TOKEN'] = config['dropbox_access_token']
-                if config.get('dropbox_folder'):
-                    os.environ['DROPBOX_FOLDER'] = config['dropbox_folder']
-                # Re-initialize storage with new token
-                initialize_storage()
-                if STORAGE_MODE == 'dropbox' and dropbox_client:
+            # Re-initialize storage with new config (initialize_storage now reads from config file)
+            initialize_storage()
+            
+            # Return appropriate message based on storage mode
+            if STORAGE_MODE == 'dropbox':
+                if dropbox_client:
                     return jsonify({
                         'success': True,
                         'message': 'Configuration saved and Dropbox connection verified. No restart needed.'
@@ -640,12 +820,24 @@ def set_storage_config():
                 else:
                     return jsonify({
                         'success': True,
-                        'message': 'Configuration saved. Dropbox connection will be retried on next operation.'
+                        'message': 'Configuration saved. Dropbox connection failed - check token and try again.'
                     })
-            return jsonify({
-                'success': True,
-                'message': 'Configuration saved. Please restart the server for changes to take effect.'
-            })
+            elif STORAGE_MODE == 'cloud':
+                if s3_client:
+                    return jsonify({
+                        'success': True,
+                        'message': 'Configuration saved and S3 connection initialized. No restart needed.'
+                    })
+                else:
+                    return jsonify({
+                        'success': True,
+                        'message': 'Configuration saved. S3 connection failed - check credentials.'
+                    })
+            else:
+                return jsonify({
+                    'success': True,
+                    'message': 'Configuration saved. Local storage mode active. No restart needed.'
+                })
         else:
             return jsonify({'error': 'Failed to save configuration'}), 500
     except Exception as e:
@@ -786,6 +978,78 @@ def test_storage():
             
     except Exception as e:
         logger.error(f"Error in test_storage: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/storage/size', methods=['GET'])
+def get_storage_size():
+    """Get storage size information"""
+    try:
+        total_size = 0
+        file_count = 0
+        file_sizes = {}
+        
+        if STORAGE_MODE == 'local':
+            if LOCAL_STORAGE_PATH.exists():
+                for file_path in LOCAL_STORAGE_PATH.glob('*.json'):
+                    size = file_path.stat().st_size
+                    total_size += size
+                    file_count += 1
+                    file_sizes[file_path.name] = size
+        
+        elif STORAGE_MODE == 'dropbox' and dropbox_client:
+            try:
+                # List all files in Dropbox folder
+                folder_path = DROPBOX_FOLDER.rstrip('/')
+                result = dropbox_client.files_list_folder(folder_path)
+                
+                while True:
+                    for entry in result.entries:
+                        if isinstance(entry, dropbox.files.FileMetadata):
+                            # Check if it's a compressed file
+                            if entry.name.endswith('.json.gz'):
+                                file_count += 1
+                                size = entry.size
+                                total_size += size
+                                file_sizes[entry.name] = size
+                            elif entry.name.endswith('.json'):
+                                file_count += 1
+                                size = entry.size
+                                total_size += size
+                                file_sizes[entry.name] = size
+                    
+                    if not result.has_more:
+                        break
+                    result = dropbox_client.files_list_folder_continue(result.cursor)
+            except Exception as e:
+                logger.warning(f"Could not list Dropbox files: {e}")
+        
+        # Format sizes
+        def format_size(bytes_size):
+            for unit in ['B', 'KB', 'MB', 'GB']:
+                if bytes_size < 1024.0:
+                    return f"{bytes_size:.2f} {unit}"
+                bytes_size /= 1024.0
+            return f"{bytes_size:.2f} TB"
+        
+        # Sort files by size (largest first)
+        sorted_files = sorted(file_sizes.items(), key=lambda x: x[1], reverse=True)
+        
+        return jsonify({
+            'storage_mode': STORAGE_MODE,
+            'total_size_bytes': total_size,
+            'total_size_formatted': format_size(total_size),
+            'file_count': file_count,
+            'files': [
+                {
+                    'name': name,
+                    'size_bytes': size,
+                    'size_formatted': format_size(size)
+                }
+                for name, size in sorted_files[:20]  # Top 20 largest files
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Error in get_storage_size: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
