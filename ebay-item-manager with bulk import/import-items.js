@@ -30,7 +30,9 @@ class ImportItemsManager {
         // Handle navigation buttons
         document.querySelectorAll('[data-nav-target]').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const target = e.currentTarget.getAttribute('data-nav-target');
+                e.preventDefault();
+                e.stopPropagation();
+                const target = btn.getAttribute('data-nav-target');
                 if (target === 'home') {
                     sessionStorage.removeItem('listingLifeSkipHome');
                     window.location.href = './index.html';

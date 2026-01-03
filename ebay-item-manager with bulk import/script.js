@@ -275,48 +275,45 @@ class EbayListingLife {
             const btn = e.target.closest('.menu-btn[data-nav-target]');
             if (!btn) return;
             
-                e.preventDefault();
-                e.stopPropagation();
-                const target = btn.dataset.navTarget;
+            e.preventDefault();
+            e.stopPropagation();
+            const target = btn.dataset.navTarget;
             console.log('Nav button clicked:', target);
             
-                if (target === 'home') {
-                    sessionStorage.removeItem('listingLifeSkipHome');
-                    window.location.href = './index.html';
-                    return;
-                } else if (target === 'listinglife') {
-                    sessionStorage.setItem('listingLifeSkipHome', 'true');
+            if (target === 'home') {
+                sessionStorage.removeItem('listingLifeSkipHome');
+                window.location.href = './index.html';
+                return;
+            } else if (target === 'listinglife') {
+                sessionStorage.setItem('listingLifeSkipHome', 'true');
                 if (this.showCategoriesView) {
                     this.showCategoriesView();
+                } else {
+                    window.location.href = './ebaylistings.html?skipHome=1';
                 }
-                } else if (target === 'ended') {
+            } else if (target === 'ended') {
                 if (this.showEndedItemsView) {
                     this.showEndedItemsView();
+                } else {
+                    window.location.href = './ebaylistings.html?view=ended&skipHome=1';
                 }
-                } else if (target === 'sold') {
-                    window.location.href = './sold-items-trends.html';
-                    return;
-                } else if (target === 'settings') {
-                    window.location.href = './settings.html';
-                    return;
-                }
+            } else if (target === 'sold') {
+                window.location.href = './sold-items-trends.html';
+                return;
+            } else if (target === 'settings') {
+                window.location.href = './settings.html';
+                return;
+            }
             if (this.updateActiveNav) {
                 this.updateActiveNav(target);
             }
         };
         
-        // Try to attach to buttons directly first
+        // Attach to buttons directly
         const navButtons = document.querySelectorAll('.menu-btn[data-nav-target]');
         console.log('Found', navButtons.length, 'navigation buttons');
         navButtons.forEach(btn => {
             btn.addEventListener('click', navHandler);
-        });
-        
-        // Also use event delegation on document as fallback
-        document.addEventListener('click', (e) => {
-            if (e.target.closest('.menu-btn[data-nav-target]')) {
-                navHandler(e);
-            }
         });
 
         // In-page navigation

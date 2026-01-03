@@ -71,8 +71,8 @@ class SoldItemsTrends {
         // Ensure storeManager is available before loading data
         if (!window.storeManager) {
             // Wait a bit more for storeManager to initialize
-            setTimeout(() => {
-                this.loadData();
+            setTimeout(async () => {
+                await this.loadData();
                 this.setupEventListeners();
                 this.updatePeriodSelect();
                 this.renderDataPeriod();
@@ -81,18 +81,22 @@ class SoldItemsTrends {
                 this.renderTrendingKeywords();
             }, 100);
         } else {
-            this.loadData();
-            this.setupEventListeners();
-            this.updatePeriodSelect();
-            this.renderDataPeriod();
-            this.renderCategories();
-            this.updateRemovePeriodButtonState();
-            this.renderTrendingKeywords();
+            // Use async IIFE to handle async loadData
+            (async () => {
+                await this.loadData();
+                this.setupEventListeners();
+                this.updatePeriodSelect();
+                this.renderDataPeriod();
+                this.renderCategories();
+                this.updateRemovePeriodButtonState();
+                this.renderTrendingKeywords();
+            })();
         }
     }
 
     setupEventListeners() {
-        document.querySelectorAll('.menu-btn[data-nav-target]').forEach(btn => {
+        const navButtons = document.querySelectorAll('.menu-btn[data-nav-target]');
+        navButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -121,7 +125,9 @@ class SoldItemsTrends {
 
         const pendingItemsBtn = document.getElementById('pendingItemsBtn');
         if (pendingItemsBtn) {
-            pendingItemsBtn.addEventListener('click', () => {
+            pendingItemsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 window.location.href = './pending-items.html';
             });
         }
@@ -1519,7 +1525,7 @@ class SoldItemsTrends {
         return true;
     }
 
-    loadData() {
+    async loadData() {
         // Get store-specific key
         const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
         
@@ -1615,15 +1621,33 @@ class SoldItemsTrends {
                 }
                 
                 // If we loaded from old key, migrate to store-specific key
+                // SAFETY: Only migrate if using local storage - in Dropbox mode, keep old keys as backup
                 if (loadedFromOldKey && window.storeManager && !localStorage.getItem(storageKey)) {
+                    const storageConfig = this.getStorageConfig ? this.getStorageConfig() : 
+                        (window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null);
+                    const storageMode = storageConfig?.storage_mode || 'local';
+                    const useBackendStorage = storageMode === 'dropbox' || storageMode === 'cloud';
+                    
                     this.saveData();
-                    // Clean up old key after successful migration
-                    localStorage.removeItem('SoldItemsTrends');
+                    
+                    // Only remove old key in local mode - keep as backup in Dropbox mode
+                    if (!useBackendStorage) {
+                        localStorage.removeItem('SoldItemsTrends');
+                        console.log('✓ Migrated to store-specific key (local mode)');
+                    } else {
+                        console.log('ℹ️ Keeping old key as backup (Dropbox mode)');
+                    }
                 }
             } catch (err) {
                 console.error('Error parsing sold trends data:', err);
-                this.periods = [];
-                this.currentPeriodId = null;
+                // SAFETY: Don't clear data on parse error - try to preserve what we can
+                // Only clear if we truly have no valid data
+                if (!this.periods || this.periods.length === 0) {
+                    this.periods = [];
+                    this.currentPeriodId = null;
+                } else {
+                    console.warn('⚠️ Parse error but keeping existing periods data');
+                }
             }
         } else {
             this.periods = [];
@@ -1637,11 +1661,23 @@ class SoldItemsTrends {
         }
 
         if (!this.currentPeriodId || !this.periods.some(period => period.id === this.currentPeriodId)) {
-            this.currentPeriodId = this.periods[0].id;
+            if (this.periods.length > 0) {
+                this.currentPeriodId = this.periods[0].id;
+            }
+        }
+
+        // Log what we loaded for debugging
+        console.log(`✓ Sold Items Trends loaded: ${this.periods.length} period(s), ${this.categories.length} categories`);
+        if (this.periods.length > 0) {
+            console.log(`   Periods: ${this.periods.map(p => p.name).join(', ')}`);
         }
 
         this.syncCategoriesFromPeriod();
         this.updateRemovePeriodButtonState();
+        
+        // CRITICAL: Update the dropdown AFTER data is loaded
+        this.updatePeriodSelect();
+        this.renderDataPeriod();
     }
 
     renderDataPeriod() {

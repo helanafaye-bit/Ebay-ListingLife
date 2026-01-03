@@ -35,8 +35,8 @@ class PendingItemsManager {
         this.init();
     }
 
-    init() {
-        this.loadPendingItems();
+    async init() {
+        await this.loadPendingItems();
         this.loadSoldItemsData();
         this.setupEventListeners();
         this.renderPendingItems();
@@ -47,7 +47,9 @@ class PendingItemsManager {
         // Handle navigation buttons
         document.querySelectorAll('[data-nav-target]').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const target = e.currentTarget.getAttribute('data-nav-target');
+                e.preventDefault();
+                e.stopPropagation();
+                const target = btn.getAttribute('data-nav-target');
                 if (target === 'home') {
                     sessionStorage.removeItem('listingLifeSkipHome');
                     window.location.href = './index.html';
@@ -192,26 +194,111 @@ class PendingItemsManager {
         }
     }
 
-    loadPendingItems() {
+    async loadPendingItems() {
         const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('PendingItems') : 'PendingItems';
-        const saved = localStorage.getItem(storageKey);
+        
+        // Check if using Dropbox/cloud storage (backend is source of truth)
+        const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
+        const storageMode = storageConfig?.storage_mode || 'local';
+        const useBackendStorage = storageMode === 'dropbox' || storageMode === 'cloud';
+        const backendAvailable = window.storageWrapper && 
+                                 window.storageWrapper.useBackend && 
+                                 window.storageWrapper.backendAvailable;
+        
+        let saved = null;
+        let loadedFromBackend = false;
+        
+        // CRITICAL: When using Dropbox/cloud, always load from backend first
+        if (backendAvailable && useBackendStorage) {
+            try {
+                console.log(`🔄 Loading PendingItems from ${storageMode} storage...`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                const response = await fetch(`http://127.0.0.1:5000/api/storage/get`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ key: storageKey }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.value) {
+                        try {
+                            const backendData = typeof result.value === 'string' ? JSON.parse(result.value) : result.value;
+                            saved = JSON.stringify(backendData);
+                            loadedFromBackend = true;
+                            console.log(`✅ Loaded PendingItems from ${storageMode} storage`);
+                            
+                            // Update localStorage with backend data
+                            try {
+                                localStorage.setItem(storageKey, saved);
+                                console.log('✓ Updated localStorage with backend data');
+                            } catch (cacheError) {
+                                console.warn('Could not cache data in localStorage:', cacheError);
+                            }
+                        } catch (parseError) {
+                            console.error('Error parsing backend data:', parseError);
+                        }
+                    }
+                }
+            } catch (backendError) {
+                if (backendError.name !== 'AbortError') {
+                    console.warn(`Could not load from backend storage:`, backendError.message);
+                }
+            }
+        }
+        
+        // Fall back to localStorage if backend didn't provide data
+        if (!saved) {
+            saved = localStorage.getItem(storageKey);
+        }
         
         if (saved) {
             try {
                 this.pendingItems = JSON.parse(saved);
+                console.log(`✓ Loaded ${this.pendingItems.length} pending item(s)`);
             } catch (error) {
-                console.error('Error loading pending items:', error);
-                this.pendingItems = [];
+                console.error('Error parsing pending items:', error);
+                // SAFETY: Don't clear existing data on parse error - keep what we have
+                if (!this.pendingItems || this.pendingItems.length === 0) {
+                    this.pendingItems = [];
+                }
             }
         } else {
+            // Only initialize empty if we truly have no data
             this.pendingItems = [];
         }
     }
 
-    savePendingItems() {
+    async savePendingItems() {
         const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('PendingItems') : 'PendingItems';
         try {
+            // Save to localStorage first
             localStorage.setItem(storageKey, JSON.stringify(this.pendingItems));
+            
+            // If using Dropbox/cloud, also save to backend
+            const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
+            const storageMode = storageConfig?.storage_mode || 'local';
+            const useBackendStorage = storageMode === 'dropbox' || storageMode === 'cloud';
+            const backendAvailable = window.storageWrapper && 
+                                     window.storageWrapper.useBackend && 
+                                     window.storageWrapper.backendAvailable;
+            
+            if (useBackendStorage && backendAvailable) {
+                try {
+                    await window.storageWrapper.saveToBackend(storageKey, this.pendingItems);
+                    console.log(`✅ Pending items saved to ${storageMode} storage (${this.pendingItems.length} items)`);
+                } catch (backendError) {
+                    console.error(`Failed to save pending items to ${storageMode}:`, backendError);
+                    // Continue - at least localStorage is saved
+                }
+            }
         } catch (error) {
             console.error('Error saving pending items:', error);
             this.showNotification('Error saving pending items: ' + error.message, 'error');
@@ -1122,12 +1209,25 @@ class PendingItemsManager {
     }
 
     clearAllPendingItems() {
-        if (confirm('Are you sure you want to clear all pending items? This cannot be undone.')) {
-            this.pendingItems = [];
-            this.savePendingItems();
-            this.renderPendingItems();
-            this.showNotification('All pending items cleared.', 'success');
+        // SAFETY: Double confirmation to prevent accidental deletion
+        const itemCount = this.pendingItems.length;
+        if (itemCount === 0) {
+            this.showNotification('No pending items to clear.', 'info');
+            return;
         }
+        
+        const confirm1 = confirm(`⚠️ WARNING: This will delete ALL ${itemCount} pending item(s).\n\nAre you sure you want to continue?`);
+        if (!confirm1) return;
+        
+        const confirm2 = confirm('This action CANNOT be undone. All pending items will be permanently deleted.\n\nClick OK to confirm deletion.');
+        if (!confirm2) return;
+        
+        // Log before clearing for safety/debugging
+        console.log(`⚠️ User confirmed: Clearing ${itemCount} pending item(s)`);
+        this.pendingItems = [];
+        this.savePendingItems();
+        this.renderPendingItems();
+        this.showNotification(`All ${itemCount} pending item(s) cleared.`, 'success');
     }
 
     filterByPeriod() {
