@@ -1392,6 +1392,7 @@ header h1 {
     margin: 0;
     font-size: 1.45rem;
     color: #111827;
+    transition: color 0.3s ease;
 }
 
 .data-period-subtitle {
@@ -1399,6 +1400,16 @@ header h1 {
     color: #6b7280;
     font-size: 0.95rem;
     max-width: 560px;
+    transition: color 0.3s ease;
+}
+
+/* Dark mode period header */
+[data-theme="dark"] .data-period-header h2 {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .data-period-subtitle {
+    color: var(--text-secondary);
 }
 
 .data-period-controls {
@@ -1414,14 +1425,27 @@ header h1 {
     border-radius: 8px;
     font-size: 0.95rem;
     background: #f2f3f4;
+    color: #2c3e50;
     min-width: 200px;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, color 0.3s ease;
 }
 
 .data-period-controls select:focus {
     border-color: #0064d3;
     box-shadow: 0 0 0 3px rgba(0, 100, 211, 0.15);
     outline: none;
+}
+
+/* Dark mode period controls */
+[data-theme="dark"] .data-period-controls select {
+    background: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .data-period-controls select:focus {
+    border-color: #0064d3;
+    box-shadow: 0 0 0 3px rgba(0, 100, 211, 0.15);
 }
 
 /* Fix dropdown cutoff issues - ensure selects can overflow containers */
@@ -1443,10 +1467,10 @@ select {
     z-index: 1001;
 }
 
-/* Fix for sold items trends page dropdowns */
+/* Fix for sold items trends page dropdowns - keep below modals */
 #dataPeriodSelect,
 #pendingPeriodSelect {
-    z-index: 1001;
+    z-index: 999;
     position: relative;
 }
 
@@ -1462,23 +1486,45 @@ select {
     justify-content: center;
     gap: 4px;
     overflow: visible;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .data-period-display .data-period-name {
     font-size: 1.1rem;
     color: #0f172a;
+    transition: color 0.3s ease;
 }
 
 .data-period-display .data-period-note {
     color: #1f2937;
     font-weight: 500;
     font-size: 0.95rem;
+    transition: color 0.3s ease;
 }
 
 .data-period-empty {
     color: #6b7280;
     font-style: italic;
     font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+/* Dark mode period display */
+[data-theme="dark"] .data-period-display {
+    background: rgba(0, 100, 211, 0.15);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .data-period-display .data-period-name {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .data-period-display .data-period-note {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .data-period-empty {
+    color: var(--text-secondary);
 }
 
 /* Category Items View */
@@ -1813,7 +1859,7 @@ select {
 .modal {
     display: none;
     position: fixed;
-    z-index: 1000;
+    z-index: 2000;
     left: 0;
     top: 0;
     width: 100%;
@@ -1834,12 +1880,72 @@ select {
     overflow-x: visible;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     position: relative;
+    z-index: 2001;
+    /* Ensure scrollbar is always visible when content overflows */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.4) rgba(0, 0, 0, 0.1);
+}
+
+/* Webkit scrollbar styling for better visibility */
+.modal-content::-webkit-scrollbar {
+    width: 12px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    border: 2px solid rgba(0, 0, 0, 0.1);
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.6);
 }
 
 /* Allow select dropdowns to overflow modal boundaries */
 .modal-content form {
     position: relative;
     z-index: 1;
+}
+
+/* Make form in itemModal scrollable */
+#itemModal .modal-content form {
+    overflow-y: auto !important;
+    overflow-x: visible !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    max-height: calc(90vh - 120px) !important;
+    padding-right: 10px;
+    margin-right: -10px;
+    /* Force scrollbar visibility on form */
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Make scrollbar very visible for itemModal form */
+#itemModal .modal-content form::-webkit-scrollbar {
+    width: 12px !important;
+}
+
+#itemModal .modal-content form::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.15) !important;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+#itemModal .modal-content form::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    border-radius: 6px;
+    border: 2px solid rgba(0, 0, 0, 0.15);
+}
+
+#itemModal .modal-content form::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.7) !important;
 }
 
 /* Ensure select dropdowns can render outside modal bounds */
@@ -1865,6 +1971,39 @@ select {
 /* Ensure select elements in move modal can show dropdowns */
 #moveItemModal select {
     z-index: 1002;
+}
+
+/* Ensure itemModal has proper scrolling */
+#itemModal .modal-content {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    max-height: 90vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    /* Force scrollbar visibility */
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Make scrollbar very visible for itemModal */
+#itemModal .modal-content::-webkit-scrollbar {
+    width: 12px !important;
+}
+
+#itemModal .modal-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.15) !important;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+#itemModal .modal-content::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    border-radius: 6px;
+    border: 2px solid rgba(0, 0, 0, 0.15);
+}
+
+#itemModal .modal-content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.7) !important;
 }
 
 .modal-content.sold-category-modal {
@@ -2489,12 +2628,51 @@ select {
     padding: 25px;
     margin-bottom: 25px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .search-results h3 {
     color: #2c3e50;
     margin-bottom: 15px;
     font-size: 1.3rem;
+    transition: color 0.3s ease;
+}
+
+/* Dark mode search results - keep white background with dark text for visibility */
+[data-theme="dark"] .search-results {
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .search-results h3 {
+    color: #2c3e50;
+}
+
+/* Items inside search results should have light background with dark text in dark mode */
+[data-theme="dark"] .search-results .item {
+    background: #f8f9fa !important;
+    border-color: #dee2e6 !important;
+    color: #2c3e50 !important;
+}
+
+/* Ensure all text in search results is dark/black in dark mode for visibility on white background */
+[data-theme="dark"] .search-results .item-name,
+[data-theme="dark"] .search-results .item-date,
+[data-theme="dark"] .search-results .item-notes {
+    color: #2c3e50 !important;
+}
+
+/* Override any inherited white text colors */
+[data-theme="dark"] .search-results .item-info {
+    color: #2c3e50 !important;
+}
+
+/* Fix highlight styling in dark mode - dark text on light yellow background */
+[data-theme="dark"] .search-results .highlight {
+    background-color: #fff3cd !important;
+    color: #2c3e50 !important;
+    padding: 2px 4px;
+    border-radius: 3px;
 }
 
 .highlight {
@@ -3025,6 +3203,39 @@ select {
     background: var(--card-bg);
     color: var(--text-primary);
     border-color: var(--border-color);
+    /* Dark mode scrollbar styling */
+    scrollbar-color: rgba(255, 255, 255, 0.4) rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .modal-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .modal-content::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .modal-content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Dark mode scrollbar for itemModal form - make it very visible */
+[data-theme="dark"] #itemModal .modal-content form {
+    scrollbar-color: rgba(255, 255, 255, 0.5) rgba(255, 255, 255, 0.15) !important;
+}
+
+[data-theme="dark"] #itemModal .modal-content form::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
+[data-theme="dark"] #itemModal .modal-content form::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="dark"] #itemModal .modal-content form::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.7) !important;
 }
 
 [data-theme="dark"] .category-box {

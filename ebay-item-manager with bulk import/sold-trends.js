@@ -14,6 +14,7 @@ class SoldItemsTrends {
         this.currentPeriodId = null;
         this.categories = [];
         this.currentEditingCategory = null;
+        this.currentEditingPeriodId = null;
         this.categoryForm = document.getElementById('soldCategoryForm');
         this.subcategoryEditorEl = document.getElementById('soldSubcategoryEditor');
         this.addSubcategoryBtn = document.getElementById('addSoldSubcategoryRow');
@@ -28,7 +29,9 @@ class SoldItemsTrends {
         this.currentSubcategoryRow = null;
         this.periodSelect = document.getElementById('dataPeriodSelect');
         this.addPeriodBtn = document.getElementById('addDataPeriodBtn');
+        this.editPeriodBtn = document.getElementById('editDataPeriodBtn');
         this.periodModal = document.getElementById('soldPeriodModal');
+        this.periodModalTitle = document.getElementById('soldPeriodModalTitle');
         this.periodForm = document.getElementById('soldPeriodForm');
         this.periodNameInput = document.getElementById('soldPeriodName');
         this.periodDescriptionInput = document.getElementById('soldPeriodDescription');
@@ -182,6 +185,10 @@ class SoldItemsTrends {
 
         if (this.addPeriodBtn) {
             this.addPeriodBtn.addEventListener('click', () => this.openPeriodModal());
+        }
+
+        if (this.editPeriodBtn) {
+            this.editPeriodBtn.addEventListener('click', () => this.handleEditPeriod());
         }
 
         if (this.removePeriodBtn) {
@@ -338,6 +345,13 @@ class SoldItemsTrends {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.style.display = 'none';
+        }
+        if (modalId === 'soldPeriodModal') {
+            // Reset editing state when closing period modal
+            this.currentEditingPeriodId = null;
+            if (this.periodNameInput) this.periodNameInput.value = '';
+            if (this.periodDescriptionInput) this.periodDescriptionInput.value = '';
+            if (this.periodModalTitle) this.periodModalTitle.textContent = 'Add Data Period';
         }
         if (modalId === 'soldCategoryModal') {
             this.currentEditingCategory = null;
@@ -1466,6 +1480,9 @@ class SoldItemsTrends {
         if (this.removePeriodBtn) {
             this.removePeriodBtn.disabled = !this.periods.length;
         }
+        if (this.editPeriodBtn) {
+            this.editPeriodBtn.disabled = !this.periods.length || !this.currentPeriodId;
+        }
     }
 
     async handleRemovePeriod() {
@@ -1696,12 +1713,36 @@ class SoldItemsTrends {
         this.dataPeriodDisplay.innerHTML = parts.join('');
     }
 
-    openPeriodModal() {
+    openPeriodModal(periodId = null) {
         if (!this.periodModal) return;
-        if (this.periodNameInput) this.periodNameInput.value = '';
-        if (this.periodDescriptionInput) this.periodDescriptionInput.value = '';
+        
+        this.currentEditingPeriodId = periodId;
+        
+        if (periodId) {
+            // Edit mode
+            const period = this.periods.find(p => p.id === periodId);
+            if (period) {
+                if (this.periodNameInput) this.periodNameInput.value = period.name || '';
+                if (this.periodDescriptionInput) this.periodDescriptionInput.value = period.description || '';
+                if (this.periodModalTitle) this.periodModalTitle.textContent = 'Edit Data Period';
+            }
+        } else {
+            // Add mode
+            if (this.periodNameInput) this.periodNameInput.value = '';
+            if (this.periodDescriptionInput) this.periodDescriptionInput.value = '';
+            if (this.periodModalTitle) this.periodModalTitle.textContent = 'Add Data Period';
+        }
+        
         this.periodModal.style.display = 'block';
         if (this.periodNameInput) this.periodNameInput.focus();
+    }
+
+    handleEditPeriod() {
+        if (!this.currentPeriodId || !this.periods.length) {
+            this.showNotification('Please select a period to edit.', 'warning');
+            return;
+        }
+        this.openPeriodModal(this.currentPeriodId);
     }
 
     handlePeriodFormSubmit(e) {
@@ -1716,11 +1757,29 @@ class SoldItemsTrends {
             return;
         }
 
-        const newPeriod = this.createPeriod(name, description, []);
-        this.periods.push(newPeriod);
-        this.closeModal('soldPeriodModal');
-        this.setCurrentPeriod(newPeriod.id);
-        this.showNotification(`Added period "${name}".`, 'success');
+        if (this.currentEditingPeriodId) {
+            // Edit existing period
+            const period = this.periods.find(p => p.id === this.currentEditingPeriodId);
+            if (period) {
+                const oldName = period.name;
+                period.name = name;
+                period.description = description;
+                period.updatedAt = new Date().toISOString();
+                this.closeModal('soldPeriodModal');
+                this.updatePeriodSelect();
+                this.renderDataPeriod();
+                this.saveData();
+                this.showNotification(`Updated period "${oldName}" to "${name}".`, 'success');
+                this.currentEditingPeriodId = null;
+            }
+        } else {
+            // Add new period
+            const newPeriod = this.createPeriod(name, description, []);
+            this.periods.push(newPeriod);
+            this.closeModal('soldPeriodModal');
+            this.setCurrentPeriod(newPeriod.id);
+            this.showNotification(`Added period "${name}".`, 'success');
+        }
     }
 
     setCurrentPeriod(periodId) {

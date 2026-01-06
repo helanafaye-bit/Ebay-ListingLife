@@ -9,6 +9,7 @@ class StorageWrapper {
         this.healthUrl = 'http://127.0.0.1:5000/api/health';
         this.useBackend = false;
         this.backendAvailable = false;
+        this.backendStorageMode = 'local'; // Track actual backend storage mode
         this.syncInProgress = false;
         this.initialSyncAttempted = false; // Track if we've attempted initial sync
         this.pendingRequests = new Set(); // Track pending requests to prevent duplicates
@@ -34,9 +35,38 @@ class StorageWrapper {
                 const health = await response.json();
                 this.useBackend = true;
                 this.backendAvailable = true;
+                this.backendStorageMode = health.storage_mode || 'local';
                 console.log('✅ Python storage backend connected');
-                console.log(`   Mode: ${health.storage_mode || 'local'}`);
+                console.log(`   Mode: ${this.backendStorageMode}`);
                 console.log(`   Path: ${health.local_path || health.dropbox_folder || health.cloud_bucket || 'N/A'}`);
+                
+                // Check if Dropbox is configured in settings but backend is in LOCAL mode
+                // This indicates Dropbox initialization failed
+                const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
+                const configuredMode = storageConfig?.storage_mode || 'local';
+                
+                if (configuredMode === 'dropbox' && this.backendStorageMode === 'local') {
+                    console.warn('⚠️ WARNING: Dropbox is configured but backend is using LOCAL storage!');
+                    console.warn('   This means Dropbox initialization failed on the server.');
+                    console.warn('   Check server logs for Dropbox errors.');
+                    console.warn('   Common causes:');
+                    console.warn('   - Missing dropbox package: pip install dropbox setuptools');
+                    console.warn('   - Invalid or expired Dropbox token');
+                    console.warn('   - Network connectivity issues');
+                    console.warn('');
+                    console.warn('   The server will use LOCAL storage until Dropbox is fixed.');
+                    console.warn('   Local data may be out of sync with Dropbox data.');
+                    
+                    // Show a notification to the user
+                    if (window.app && typeof window.app.showNotification === 'function') {
+                        window.app.showNotification(
+                            'Dropbox is configured but server is using LOCAL storage. Check server logs for errors. Local data may be out of sync.',
+                            'warning',
+                            10000
+                        );
+                    }
+                }
+                
                 // Sync existing localStorage data to backend on first connection
                 // IMPORTANT: Delay sync to allow app's loadData() to check backend first
                 // This prevents overwriting newer backend data with old localStorage data
@@ -61,11 +91,15 @@ class StorageWrapper {
         }
     }
 
-    async syncToBackend() {
+    async syncToBackend(forceOverride = false) {
         if (this.syncInProgress || !this.useBackend) return;
         
         this.syncInProgress = true;
-        console.log('🔄 Checking backend storage before syncing...');
+        if (forceOverride) {
+            console.log('🔄 Force syncing to backend (overriding existing data)...');
+        } else {
+            console.log('🔄 Checking backend storage before syncing...');
+        }
         
         try {
             // Collect all relevant localStorage keys
@@ -89,11 +123,20 @@ class StorageWrapper {
             if (Object.keys(items).length > 0) {
                 // CRITICAL: Check if backend already has data for each key before syncing
                 // This prevents overwriting newer backend data with old localStorage data
+                // UNLESS forceOverride is true (allows editing/correcting mistakes)
                 const itemsToSync = {};
                 let checkedCount = 0;
+                let skippedCount = 0;
                 
                 for (const [key, value] of Object.entries(items)) {
                     try {
+                        // If force override, skip the check and sync everything
+                        if (forceOverride) {
+                            itemsToSync[key] = value;
+                            checkedCount++;
+                            continue;
+                        }
+                        
                         // Check if backend has data for this key
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 3000);
@@ -121,8 +164,26 @@ class StorageWrapper {
                                         : true));
                             
                             if (hasValue) {
-                                // Backend already has data for this key - don't overwrite it
-                                console.log(`⚠️ Backend already has data for ${key}, skipping sync to prevent overwrite`);
+                                // Check if Dropbox is configured but backend is LOCAL
+                                // In this case, local data might be old and we should still try to sync
+                                // (though if backend is LOCAL, it can't access Dropbox anyway)
+                                const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
+                                const configuredMode = storageConfig?.storage_mode || 'local';
+                                
+                                if (configuredMode === 'dropbox' && this.backendStorageMode === 'local') {
+                                    // Dropbox is configured but backend is LOCAL - this is a mismatch
+                                    // Local data might be old, but backend can't access Dropbox anyway
+                                    // So we'll skip sync but log a warning
+                                    console.warn(`⚠️ Backend has LOCAL data for ${key}, but Dropbox is configured.`);
+                                    console.warn(`   Backend cannot access Dropbox (initialization failed).`);
+                                    console.warn(`   Skipping sync - fix Dropbox on server to access shared data.`);
+                                    console.warn(`   To force sync anyway, use: storageWrapper.syncToBackend(true)`);
+                                } else {
+                                    // Normal case: backend already has data - don't overwrite it
+                                    console.log(`⚠️ Backend already has data for ${key}, skipping sync to prevent overwrite`);
+                                    console.log(`   To force sync and overwrite, use: storageWrapper.syncToBackend(true)`);
+                                }
+                                skippedCount++;
                                 checkedCount++;
                                 continue;
                             }
@@ -141,7 +202,12 @@ class StorageWrapper {
                 }
                 
                 if (Object.keys(itemsToSync).length > 0) {
-                    console.log(`🔄 Syncing ${Object.keys(itemsToSync).length} items to backend (${checkedCount - Object.keys(itemsToSync).length} skipped - backend has data)`);
+                    const skippedMsg = skippedCount > 0 ? ` (${skippedCount} skipped - backend has data)` : '';
+                    if (forceOverride) {
+                        console.log(`🔄 Force syncing ${Object.keys(itemsToSync).length} items to backend (overriding existing data)...`);
+                    } else {
+                        console.log(`🔄 Syncing ${Object.keys(itemsToSync).length} items to backend${skippedMsg}`);
+                    }
                     
                     // Try sync endpoint, fallback to individual saves
                     try {
@@ -155,7 +221,11 @@ class StorageWrapper {
                         
                         if (response.ok) {
                             const result = await response.json();
-                            console.log(`✅ Synced ${result.synced || Object.keys(itemsToSync).length} items to backend`);
+                            if (forceOverride) {
+                                console.log(`✅ Force synced ${result.synced || Object.keys(itemsToSync).length} items to backend (overwrote existing data)`);
+                            } else {
+                                console.log(`✅ Synced ${result.synced || Object.keys(itemsToSync).length} items to backend`);
+                            }
                         }
                     } catch (syncError) {
                         // Fallback: sync items individually (but don't block)
@@ -165,7 +235,12 @@ class StorageWrapper {
                         }
                     }
                 } else {
-                    console.log(`✓ Backend already has all data. No sync needed (prevents overwriting newer data).`);
+                    if (forceOverride) {
+                        console.log(`ℹ️ No items to sync (all items already match backend)`);
+                    } else {
+                        console.log(`✓ Backend already has all data. No sync needed (prevents overwriting newer data).`);
+                        console.log(`   To force sync anyway (e.g., to fix a typo), use: storageWrapper.syncToBackend(true)`);
+                    }
                 }
             }
         } catch (error) {
@@ -351,6 +426,18 @@ class StorageWrapper {
                 this.checkBackendAvailability();
             }
         }, 30000); // Check every 30 seconds
+    }
+
+    /**
+     * Force sync to backend, overriding existing data
+     * Use this if you need to correct mistakes or overwrite backend data with localStorage data
+     * 
+     * Example: storageWrapper.forceSyncToBackend()
+     */
+    async forceSyncToBackend() {
+        console.log('⚠️ Force sync requested - will overwrite backend data with localStorage data');
+        console.log('   This is useful if you need to correct mistakes or restore from localStorage');
+        return this.syncToBackend(true);
     }
 }
 
