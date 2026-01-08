@@ -68,8 +68,10 @@ def initialize_storage():
     
     # First, try to load from config file (takes precedence over env vars)
     config = load_config_file()
+    requested_mode = None
     if config:
-        STORAGE_MODE = config.get('storage_mode', 'local').lower()
+        requested_mode = config.get('storage_mode', 'local').lower()
+        STORAGE_MODE = requested_mode
         LOCAL_STORAGE_PATH = Path(config.get('local_storage_path', './listinglife_data'))
         CLOUD_BUCKET = config.get('s3_bucket', None)
         DROPBOX_ACCESS_TOKEN = config.get('dropbox_access_token', None)
@@ -77,6 +79,7 @@ def initialize_storage():
         DROPBOX_APP_KEY = config.get('dropbox_app_key', None)
         DROPBOX_APP_SECRET = config.get('dropbox_app_secret', None)
         DROPBOX_FOLDER = config.get('dropbox_folder', '/ListingLife')
+        logger.info(f"Loaded storage config from file: mode={STORAGE_MODE}, token_length={len(DROPBOX_ACCESS_TOKEN) if DROPBOX_ACCESS_TOKEN else 0}")
         # Also set env vars for AWS if provided
         if config.get('aws_access_key_id'):
             os.environ['AWS_ACCESS_KEY_ID'] = config['aws_access_key_id']
@@ -84,7 +87,6 @@ def initialize_storage():
             os.environ['AWS_SECRET_ACCESS_KEY'] = config['aws_secret_access_key']
         if config.get('aws_region'):
             os.environ['AWS_REGION'] = config['aws_region']
-        logger.info(f"Loaded storage config from file: mode={STORAGE_MODE}")
     else:
         # Fall back to environment variables
         STORAGE_MODE = os.getenv('STORAGE_MODE', 'local').lower()
@@ -119,7 +121,11 @@ def initialize_storage():
             STORAGE_MODE = 'local'
     
     # Initialize Dropbox client if using Dropbox
-    dropbox_client = None
+    # Only reset if we're switching modes, not if we're reinitializing the same mode
+    if STORAGE_MODE != 'dropbox':
+        dropbox_client = None
+        dropbox = None
+    
     if STORAGE_MODE == 'dropbox':
         # Try to import dropbox module - use local variable first to avoid shadowing global
         dropbox_imported = None
@@ -144,6 +150,7 @@ def initialize_storage():
         
         if dropbox_imported and STORAGE_MODE == 'dropbox':
             if DROPBOX_ACCESS_TOKEN:
+                logger.info(f"🔐 Attempting Dropbox initialization with token (length: {len(DROPBOX_ACCESS_TOKEN)})")
                 # Check if token is short-lived (starts with 'sl.u.')
                 # Note: As of 2024, Dropbox only issues short-lived tokens via the app console
                 # Long-lived tokens require OAuth flow with refresh tokens
@@ -153,8 +160,11 @@ def initialize_storage():
                     logger.info("   If your token expires, simply generate a new one in Dropbox app settings.")
                     logger.info("   The app will continue working with short-lived tokens.")
                     logger.info("")
+                else:
+                    logger.info("ℹ️  Using long-lived Dropbox token")
                 
                 try:
+                    logger.info("🔌 Creating Dropbox client...")
                     dropbox_client = dropbox_imported.Dropbox(DROPBOX_ACCESS_TOKEN)
                     # Test connection with retry for temporary network issues
                     max_retries = 3
@@ -214,6 +224,9 @@ def initialize_storage():
                     error_msg = str(auth_error)
                     error_type = type(auth_error).__name__
                     
+                    logger.error(f"❌ Dropbox authentication failed: {error_type}")
+                    logger.error(f"   Error details: {error_msg}")
+                    
                     # Only report as expired if we're certain
                     is_expired = (
                         'expired_access_token' in error_msg or
@@ -222,16 +235,24 @@ def initialize_storage():
                     )
                     
                     if is_expired:
-                        logger.error(f"Dropbox access token has expired. Please generate a new token from:")
-                        logger.error("https://www.dropbox.com/developers/apps")
-                        logger.error("Go to your app -> Settings -> OAuth 2 -> Generate access token")
-                        logger.error("Then update the token in your settings or restart the server with the new token.")
+                        logger.error("🔑 Dropbox access token has expired. Please generate a new token from:")
+                        logger.error("   https://www.dropbox.com/developers/apps")
+                        logger.error("   Go to your app -> Settings -> OAuth 2 -> Generate access token")
+                        logger.error("   Then update the token in your settings page and save again.")
                     else:
-                        logger.warning(f"Dropbox authentication issue (may be temporary): {auth_error}")
-                        logger.info("Falling back to local storage. Dropbox will be retried on next operation.")
-                    STORAGE_MODE = 'local'
+                        logger.error(f"🔐 Dropbox authentication issue: {auth_error}")
+                        logger.error("   This may be due to:")
+                        logger.error("   - Invalid token format")
+                        logger.error("   - Token revoked or permissions changed")
+                        logger.error("   - Network connectivity issues")
+                    logger.warning("⚠️  Dropbox initialization failed. Server will use LOCAL storage until Dropbox is fixed.")
+                    # Only fall back to local if not explicitly requested in config
+                    # This allows retry without restart
+                    if requested_mode != 'dropbox':
+                        STORAGE_MODE = 'local'
                     dropbox_client = None
-                    dropbox = None
+                    # Keep dropbox module reference for retry
+                    # dropbox = None  # Don't clear module, keep it for retry
                 except Exception as e:
                     error_msg = str(e)
                     error_type = type(e).__name__
@@ -250,12 +271,17 @@ def initialize_storage():
                         logger.error("Then update the token in your settings or restart the server with the new token.")
                     else:
                         logger.warning(f"Dropbox connection issue (may be temporary): {e}")
-                        logger.info("Falling back to local storage. Dropbox will be retried on next operation.")
-                    STORAGE_MODE = 'local'
+                    logger.warning("⚠️  Dropbox initialization failed. Server will use LOCAL storage until Dropbox is fixed.")
+                    # Only fall back to local if not explicitly requested in config
+                    if requested_mode != 'dropbox':
+                        STORAGE_MODE = 'local'
                     dropbox_client = None
-                    dropbox = None
+                    # Keep dropbox module reference for retry
+                    # dropbox = None  # Don't clear module, keep it for retry
             else:
-                logger.warning("STORAGE_MODE is 'dropbox' but DROPBOX_ACCESS_TOKEN not set. Falling back to local.")
+                logger.error("❌ STORAGE_MODE is 'dropbox' but DROPBOX_ACCESS_TOKEN is not set or empty!")
+                logger.error("   Please add your Dropbox access token in the Settings page.")
+                logger.warning("⚠️  Falling back to local storage.")
                 STORAGE_MODE = 'local'
                 dropbox = None
 
@@ -823,21 +849,32 @@ def set_storage_config():
     """Save storage configuration"""
     try:
         config = request.json
+        requested_mode = config.get('storage_mode', 'local').lower()
+        logger.info(f"📝 Saving storage configuration: mode={requested_mode}")
+        
         if save_config_file(config):
             # Re-initialize storage with new config (initialize_storage now reads from config file)
+            logger.info("🔄 Re-initializing storage with new configuration...")
             initialize_storage()
             
             # Return appropriate message based on storage mode
-            if STORAGE_MODE == 'dropbox':
-                if dropbox_client:
+            if requested_mode == 'dropbox':
+                if STORAGE_MODE == 'dropbox' and dropbox_client:
+                    logger.info("✅ Dropbox successfully initialized after config save")
                     return jsonify({
                         'success': True,
                         'message': 'Configuration saved and Dropbox connection verified. No restart needed.'
                     })
                 else:
+                    logger.warning(f"⚠️ Dropbox requested but initialization failed. Current mode: {STORAGE_MODE}")
+                    error_msg = 'Dropbox connection failed. '
+                    if STORAGE_MODE != 'dropbox':
+                        error_msg += f'Server fell back to {STORAGE_MODE} mode. '
+                    error_msg += 'Check server console logs for detailed error messages. Verify your Dropbox token is valid and not expired.'
                     return jsonify({
-                        'success': True,
-                        'message': 'Configuration saved. Dropbox connection failed - check token and try again.'
+                        'success': False,
+                        'message': error_msg,
+                        'storage_mode': STORAGE_MODE  # Return actual mode
                     })
             elif STORAGE_MODE == 'cloud':
                 if s3_client:

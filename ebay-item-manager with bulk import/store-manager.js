@@ -3,64 +3,13 @@ class StoreManager {
     constructor() {
         this.stores = [];
         this.currentStoreId = null;
-        // Immediately restore dropdown value from localStorage to prevent flicker during navigation
-        this.restoreDropdownValueImmediately();
         this.init();
-    }
-
-    restoreDropdownValueImmediately() {
-        // Synchronously read current store from localStorage and set dropdown value immediately
-        // This prevents visual flicker when navigating between pages
-        try {
-            const storeSelect = document.getElementById('storeSelect');
-            if (!storeSelect) return;
-
-            const savedStoreId = localStorage.getItem('ListingLifeCurrentStore');
-            if (savedStoreId) {
-                // Load stores synchronously from localStorage if available
-                const savedStores = localStorage.getItem('ListingLifeStores');
-                if (savedStores) {
-                    try {
-                        const stores = JSON.parse(savedStores);
-                        // Check if saved store ID exists in stores list
-                        const store = stores.find(s => s.id === savedStoreId);
-                        if (store) {
-                            // Set value immediately if store exists
-                            // The value will be set properly once stores are loaded
-                            // but this prevents the "Select Store" flash
-                            this.currentStoreId = savedStoreId;
-                            
-                            // If dropdown already has options populated, set the value now
-                            // Otherwise, the value will be set during updateStoreDropdown()
-                            if (storeSelect.options.length > 1) {
-                                const optionExists = Array.from(storeSelect.options).some(opt => opt.value === savedStoreId);
-                                if (optionExists) {
-                                    storeSelect.value = savedStoreId;
-                                }
-                            } else {
-                                // Dropdown doesn't have options yet, but cache the store ID
-                                // so updateStoreDropdown() knows which value to set
-                                this._pendingStoreId = savedStoreId;
-                            }
-                        }
-                    } catch (e) {
-                        // Ignore parse errors
-                    }
-                }
-            }
-        } catch (e) {
-            // Ignore errors during immediate restore
-        }
     }
 
     async init() {
         await this.loadStores();
         await this.migrateStoreIdsIfNeeded(); // Migrate old random IDs to deterministic IDs
         await this.loadCurrentStore();
-        // Clear pending store ID if it was set during immediate restore
-        if (this._pendingStoreId && this.currentStoreId === this._pendingStoreId) {
-            this._pendingStoreId = null;
-        }
         this.setupEventListeners();
         this.updateStoreDropdown();
     }
@@ -478,58 +427,89 @@ class StoreManager {
         const storeSelect = document.getElementById('storeSelect');
         if (!storeSelect) return;
 
-        const currentSelectedId = storeSelect.value;
-        const currentOptionsCount = storeSelect.options.length;
-        const expectedOptionsCount = this.stores.length + 1;
+        // Get current state before any changes
+        const currentValue = storeSelect.value;
+        const currentText = storeSelect.selectedIndex >= 0 ? storeSelect.options[storeSelect.selectedIndex].textContent : '';
         
-        // If dropdown already shows the correct store and stores list hasn't changed, skip update completely
-        // This prevents unnecessary flicker during navigation
-        if (currentSelectedId === this.currentStoreId && 
-            currentOptionsCount === expectedOptionsCount && 
-            this.currentStoreId) {
-            // Already correctly set, no need to update
+        // Build a map of existing options by value for efficient lookup
+        const existingOptions = new Map();
+        Array.from(storeSelect.options).forEach((opt, index) => {
+            if (opt.value) { // Skip the "Select Store" option (empty value)
+                existingOptions.set(opt.value, { option: opt, index });
+            }
+        });
+        
+        // Check what needs to be updated
+        const storeIds = new Set(this.stores.map(s => s.id));
+        const existingIds = new Set(existingOptions.keys());
+        
+        // Determine what changed
+        const toAdd = this.stores.filter(s => !existingOptions.has(s.id));
+        const toRemove = Array.from(existingOptions.keys()).filter(id => !storeIds.has(id));
+        const toUpdate = this.stores.filter(s => {
+            const existing = existingOptions.get(s.id);
+            return existing && existing.option.textContent !== s.name;
+        });
+        
+        // If nothing changed and selection is correct, skip update entirely
+        if (toAdd.length === 0 && toRemove.length === 0 && toUpdate.length === 0) {
+            const selectionCorrect = (this.currentStoreId && currentValue === this.currentStoreId) ||
+                                    (!this.currentStoreId && (currentValue === '' || currentValue === null));
+            if (selectionCorrect) {
+                return; // Everything is already correct, no update needed
+            }
+            // Just need to update selection
+            if (this.currentStoreId) {
+                storeSelect.value = this.currentStoreId;
+            } else {
+                storeSelect.value = '';
+            }
             return;
         }
-
-        // Preserve the currently selected value to restore it immediately after update
-        const valueToRestore = this.currentStoreId || currentSelectedId;
         
-        // Build all options in a DocumentFragment first to minimize visual flicker
-        const fragment = document.createDocumentFragment();
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = 'Select Store';
-        fragment.appendChild(defaultOption);
+        // Update existing options in place (no visual flicker)
+        toUpdate.forEach(store => {
+            const existing = existingOptions.get(store.id);
+            if (existing) {
+                existing.option.textContent = store.name;
+            }
+        });
         
-        this.stores.forEach(store => {
+        // Remove options that no longer exist (start from end to preserve indices)
+        toRemove.sort((a, b) => existingOptions.get(b).index - existingOptions.get(a).index);
+        toRemove.forEach(id => {
+            const existing = existingOptions.get(id);
+            if (existing) {
+                existing.option.remove();
+            }
+        });
+        
+        // Add new options after the "Select Store" option
+        const defaultOption = storeSelect.querySelector('option[value=""]');
+        const insertAfter = defaultOption || (storeSelect.options.length > 0 ? storeSelect.options[0] : null);
+        
+        toAdd.forEach(store => {
             const option = document.createElement('option');
             option.value = store.id;
             option.textContent = store.name;
-            // Pre-select if this is the store we want to restore
-            if (store.id === valueToRestore) {
+            if (store.id === this.currentStoreId) {
                 option.selected = true;
             }
-            fragment.appendChild(option);
+            if (insertAfter) {
+                insertAfter.insertAdjacentElement('afterend', option);
+            } else {
+                storeSelect.appendChild(option);
+            }
         });
         
-        // Replace all options atomically using replaceChildren to prevent flicker
-        // Use a microtask to ensure value is set immediately in same render cycle
-        storeSelect.replaceChildren(fragment);
-        
-        // Immediately restore the selected value in the same synchronous execution
-        // This prevents the browser from showing "Select Store" even for a frame
-        if (valueToRestore && storeSelect.value !== valueToRestore) {
-            storeSelect.value = valueToRestore;
-        }
-        
-        // Double-check: if value still doesn't match, force it one more time
-        // This catches any edge cases where the option wasn't found
-        if (this.currentStoreId && storeSelect.value !== this.currentStoreId) {
-            // Try setting it again - the option should exist now
-            const optionExists = Array.from(storeSelect.options).some(opt => opt.value === this.currentStoreId);
-            if (optionExists) {
+        // Ensure correct selection is set
+        if (this.currentStoreId) {
+            // Only change if different to avoid unnecessary visual update
+            if (storeSelect.value !== this.currentStoreId) {
                 storeSelect.value = this.currentStoreId;
             }
+        } else if (storeSelect.value !== '') {
+            storeSelect.value = '';
         }
     }
 

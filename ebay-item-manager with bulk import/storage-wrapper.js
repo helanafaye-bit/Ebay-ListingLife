@@ -165,19 +165,23 @@ class StorageWrapper {
                             
                             if (hasValue) {
                                 // Check if Dropbox is configured but backend is LOCAL
-                                // In this case, local data might be old and we should still try to sync
-                                // (though if backend is LOCAL, it can't access Dropbox anyway)
+                                // In this case, backend has stale LOCAL data and we should prefer Dropbox
                                 const storageConfig = window.listingLifeSettings ? window.listingLifeSettings.getStorageConfig() : null;
                                 const configuredMode = storageConfig?.storage_mode || 'local';
                                 
                                 if (configuredMode === 'dropbox' && this.backendStorageMode === 'local') {
-                                    // Dropbox is configured but backend is LOCAL - this is a mismatch
-                                    // Local data might be old, but backend can't access Dropbox anyway
-                                    // So we'll skip sync but log a warning
+                                    // Dropbox is configured but backend is in LOCAL mode (Dropbox failed)
+                                    // The LOCAL backend data is stale - when Dropbox is fixed, we want Dropbox data
+                                    // So skip syncing TO backend (it's LOCAL), but also skip syncing FROM backend (it's stale)
+                                    // When Dropbox is fixed, the backend will switch to Dropbox mode and load fresh data
                                     console.warn(`⚠️ Backend has LOCAL data for ${key}, but Dropbox is configured.`);
-                                    console.warn(`   Backend cannot access Dropbox (initialization failed).`);
-                                    console.warn(`   Skipping sync - fix Dropbox on server to access shared data.`);
-                                    console.warn(`   To force sync anyway, use: storageWrapper.syncToBackend(true)`);
+                                    console.warn(`   Backend cannot access Dropbox (check server logs for token expiration).`);
+                                    console.warn(`   Skipping sync - update Dropbox token in Settings, then restart server.`);
+                                    console.warn(`   Once Dropbox is working, data will load from Dropbox instead of stale local data.`);
+                                } else if (configuredMode === 'dropbox' && this.backendStorageMode === 'dropbox') {
+                                    // Dropbox is configured AND working - backend has Dropbox data
+                                    // Don't overwrite Dropbox data with potentially older localStorage data
+                                    console.log(`✓ Backend has Dropbox data for ${key}, skipping sync (Dropbox is source of truth)`);
                                 } else {
                                     // Normal case: backend already has data - don't overwrite it
                                     console.log(`⚠️ Backend already has data for ${key}, skipping sync to prevent overwrite`);
@@ -421,9 +425,56 @@ class StorageWrapper {
 
     // Periodic health check
     startHealthCheck() {
+        let lastStorageMode = this.backendStorageMode;
         setInterval(() => {
             if (!this.backendAvailable) {
                 this.checkBackendAvailability();
+            } else {
+                // Check if storage mode changed (e.g., LOCAL to Dropbox)
+                // This happens when Dropbox token is updated and server reconnects
+                const healthCheck = async () => {
+                    try {
+                        const response = await fetch(this.healthUrl, {
+                            method: 'GET',
+                            cache: 'no-cache'
+                        });
+                        if (response.ok) {
+                            const health = await response.json();
+                            const currentMode = health.storage_mode || 'local';
+                            
+                            // If storage mode changed from LOCAL to Dropbox, reload data from backend
+                            if (lastStorageMode === 'local' && currentMode === 'dropbox') {
+                                console.log('✅ Storage mode changed from LOCAL to Dropbox - reloading data from Dropbox');
+                                this.backendStorageMode = currentMode;
+                                
+                                // Trigger a reload of data from backend (Dropbox)
+                                if (window.dispatchEvent) {
+                                    window.dispatchEvent(new CustomEvent('storageModeChanged', { 
+                                        detail: { 
+                                            oldMode: lastStorageMode, 
+                                            newMode: currentMode 
+                                        } 
+                                    }));
+                                }
+                                
+                                // Reload page to get fresh data from Dropbox
+                                if (window.location && !window.location.pathname.includes('settings.html')) {
+                                    console.log('🔄 Reloading page to load data from Dropbox...');
+                                    window.location.reload();
+                                }
+                            } else if (lastStorageMode !== currentMode) {
+                                // Mode changed in other direction, just update tracking
+                                this.backendStorageMode = currentMode;
+                                console.log(`📦 Storage mode changed: ${lastStorageMode} → ${currentMode}`);
+                            }
+                            
+                            lastStorageMode = currentMode;
+                        }
+                    } catch (error) {
+                        // Silently fail health check
+                    }
+                };
+                healthCheck();
             }
         }, 30000); // Check every 30 seconds
     }

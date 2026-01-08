@@ -350,8 +350,11 @@ class EbayListingLife {
         this.addListenerById('recentToggle', 'click', () => this.setSidebarMode('recent'));
         this.addListenerById('endingToggle', 'click', () => this.setSidebarMode('ending'));
 
-        // Category sort dropdown
+        // Category sort dropdown (for items within a category)
         this.addListenerById('categorySortSelect', 'change', (e) => this.handleCategorySort(e));
+        
+        // Categories sort dropdown (for the categories list)
+        this.addListenerById('categoriesSortSelect', 'change', (e) => this.handleCategoriesSort(e));
 
         // Modal forms
         this.addListenerById('categoryForm', 'submit', (e) => this.handleCategorySubmit(e));
@@ -1088,6 +1091,7 @@ class EbayListingLife {
             this.currentEditingItem.note = note;
             this.currentEditingItem.dateAdded = actualDateAdded;
             this.currentEditingItem.duration = duration;
+            this.currentEditingItem.endDate = endDateStr; // Store the end date
             this.currentEditingItem.photo = photo;
             
             // If editing an ended item with new duration, clear the manually ended flag
@@ -1129,6 +1133,7 @@ class EbayListingLife {
                     note: note,
                     dateAdded: actualDateAdded,
                     duration: duration,
+                    endDate: endDateStr, // Store the end date
                     photo: photo,
                     createdAt: new Date().toISOString()
                 };
@@ -1176,6 +1181,7 @@ class EbayListingLife {
                 note: note,
                 dateAdded: actualDateAdded,
                 duration: duration,
+                endDate: endDateStr, // Store the end date
                 photo: photo,
                 createdAt: new Date().toISOString()
             };
@@ -2392,8 +2398,23 @@ class EbayListingLife {
         const container = document.getElementById('categoriesContainer');
         if (!container) return;
         
+        // Get sort order from dropdown (default to 'default' if not set)
+        const sortSelect = document.getElementById('categoriesSortSelect');
+        const sortOrder = sortSelect ? sortSelect.value : 'default';
+        
         if (this.categories.length === 0) {
             const emptyHTML = `
+                <div class="categories-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">Categories</h2>
+                    <div class="sort-dropdown">
+                        <label for="categoriesSortSelect" style="margin-right: 8px; font-size: 14px; color: #6c757d;">Sort:</label>
+                        <select id="categoriesSortSelect" style="padding: 8px 12px; border-radius: 8px; border: 2px solid #e1e8ed; font-size: 14px;">
+                            <option value="default" ${sortOrder === 'default' ? 'selected' : ''}>Default</option>
+                            <option value="a-z" ${sortOrder === 'a-z' ? 'selected' : ''}>A-Z</option>
+                            <option value="a-z-by-title" ${sortOrder === 'a-z-by-title' ? 'selected' : ''}>A-Z by Category Title</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="empty-state">
                     <h3>No categories yet</h3>
                     <p>Create your first category to start managing your eBay items!</p>
@@ -2402,14 +2423,43 @@ class EbayListingLife {
             container.innerHTML = emptyHTML;
             this._cachedCategoriesHTML = emptyHTML;
             this._lastCategoriesHash = this._getCategoriesHash();
+            // Re-attach event listener
+            this.addListenerById('categoriesSortSelect', 'change', (e) => this.handleCategoriesSort(e));
             return;
         }
+
+        // Sort categories based on selected option
+        let sortedCategories = [...this.categories];
+        if (sortOrder === 'a-z' || sortOrder === 'a-z-by-title') {
+            // Sort alphabetically by category name (case-insensitive)
+            sortedCategories.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+        }
+        // For 'default', keep original order (no sorting)
+
+        // Build header HTML (preserve sort dropdown)
+        const headerHTML = `
+            <div class="categories-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Categories</h2>
+                <div class="sort-dropdown">
+                    <label for="categoriesSortSelect" style="margin-right: 8px; font-size: 14px; color: #6c757d;">Sort:</label>
+                    <select id="categoriesSortSelect" style="padding: 8px 12px; border-radius: 8px; border: 2px solid #e1e8ed; font-size: 14px;">
+                        <option value="default" ${sortOrder === 'default' ? 'selected' : ''}>Default</option>
+                        <option value="a-z" ${sortOrder === 'a-z' ? 'selected' : ''}>A-Z</option>
+                        <option value="a-z-by-title" ${sortOrder === 'a-z-by-title' ? 'selected' : ''}>A-Z by Category Title</option>
+                    </select>
+                </div>
+            </div>
+        `;
 
         // Use cached item counts (calculated once, O(n) instead of O(n*m))
         const itemCounts = this._calculateCategoryItemCounts();
         
         // Use array join instead of string concatenation for better performance
-        const categoryHTMLs = this.categories.map(category => {
+        const categoryHTMLs = sortedCategories.map(category => {
             const itemCount = itemCounts.get(category.id) || 0;
             const escapedCategory = JSON.stringify(category).replace(/"/g, '&quot;');
             const descriptionHTML = category.description ? `<div class="item-description">${category.description}</div>` : '';
@@ -2428,14 +2478,22 @@ class EbayListingLife {
         });
 
         // Use document fragment for faster DOM updates
-        const html = '<div class="categories-grid">' + categoryHTMLs.join('') + '</div>';
+        const html = headerHTML + '<div class="categories-grid">' + categoryHTMLs.join('') + '</div>';
         
         // Update DOM in one operation
         container.innerHTML = html;
         
+        // Re-attach event listener after innerHTML update
+        this.addListenerById('categoriesSortSelect', 'change', (e) => this.handleCategoriesSort(e));
+        
         // Cache the rendered HTML
         this._cachedCategoriesHTML = html;
         this._lastCategoriesHash = this._getCategoriesHash();
+    }
+    
+    handleCategoriesSort(e) {
+        // Re-render categories with new sort order
+        this.renderCategories();
     }
 
     renderCategoryItems(items) {
@@ -2520,6 +2578,7 @@ class EbayListingLife {
         // (sold items should only appear in the sold items section)
         const endedItems = [];
         const itemDaysLeft = new Map(); // Cache days left calculations
+        const itemEndDates = new Map(); // Cache end dates
         
         this.items.forEach(item => {
             // Skip items that have been marked as sold
@@ -2529,6 +2588,28 @@ class EbayListingLife {
             
             const daysLeft = this.calculateDaysLeft(item);
             itemDaysLeft.set(item.id, daysLeft);
+            
+            // Calculate end date for this item
+            let endDate;
+            if (item.endDate) {
+                // Use stored endDate if available
+                endDate = new Date(item.endDate);
+            } else if (item.endedDate) {
+                // Use endedDate for manually ended items
+                endDate = new Date(item.endedDate);
+            } else {
+                // Calculate from dateAdded + duration
+                const duration = item.duration || 30;
+                const addedDate = new Date(item.dateAdded);
+                if (!isNaN(addedDate.getTime())) {
+                    endDate = new Date(addedDate.getTime() + (duration * 24 * 60 * 60 * 1000));
+                } else {
+                    // Fallback if dateAdded is invalid
+                    endDate = new Date();
+                }
+            }
+            itemEndDates.set(item.id, endDate);
+            
             if (daysLeft <= 0) {
                 endedItems.push(item);
             }
@@ -2547,6 +2628,14 @@ class EbayListingLife {
             return;
         }
 
+        // Sort ended items by end date (most recent first)
+        endedItems.sort((a, b) => {
+            const aEndDate = itemEndDates.get(a.id);
+            const bEndDate = itemEndDates.get(b.id);
+            // Most recent first (descending order)
+            return bEndDate - aEndDate;
+        });
+
         // Build category lookup map once (O(n) instead of O(n*m))
         const categoryLookup = this._buildCategoryLookup();
         
@@ -2560,6 +2649,11 @@ class EbayListingLife {
             // Use cached days left calculation
             const daysLeft = itemDaysLeft.get(item.id);
             const daysText = item.manuallyEnded ? 'Manually Ended' : (daysLeft <= 0 ? 'Ended' : `${daysLeft} days left`);
+            
+            // Get and format ended date
+            const endDate = itemEndDates.get(item.id);
+            const endedDateFormatted = endDate && !isNaN(endDate.getTime()) ? this.formatDate(endDate.toISOString().split('T')[0]) : 'Unknown';
+            
             const noteHTML = item.note ? `<div class="item-notes">${this.escapeHtml(item.note.substring(0, 50))}${item.note.length > 50 ? '...' : ''}</div>` : '';
             const categoryName = category ? this.escapeHtml(category.name) : 'Unknown';
             const dateAdded = item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown';
@@ -2572,7 +2666,7 @@ class EbayListingLife {
                     ${photoHtml}
                     <div class="item-info">
                         <div class="item-name">${this.escapeHtml(item.name)}</div>
-                        <div class="item-date">Category: ${categoryName} | Added: ${dateAdded}</div>
+                        <div class="item-date">Category: ${categoryName} | Added: ${dateAdded} | Ended: ${endedDateFormatted}</div>
                         ${noteHTML}
                         <div class="item-days-left ended">${this.escapeHtml(daysText)}</div>
                     </div>
@@ -3417,9 +3511,104 @@ class EbayListingLife {
                 const data = JSON.parse(savedData);
                 // Ensure we have arrays (handle null/undefined cases)
                 this.categories = Array.isArray(data.categories) ? data.categories : [];
-                this.items = Array.isArray(data.items) ? data.items : [];
+                
+                // CRITICAL: Merge items to preserve sold/ended status from local storage
+                // When loading from backend (Dropbox), we need to preserve local changes for items
+                // that have been marked as sold/ended, as the backend data might be older
+                const backendItems = Array.isArray(data.items) ? data.items : [];
+                
+                // Check local storage for sold/ended items before replacing
+                // This ensures we preserve sold/ended status even if backend has older data
+                let localSoldEndedMap = new Map();
+                try {
+                    // Try to load from localStorage to check for sold/ended items
+                    const localDataStr = localStorage.getItem(storageKey);
+                    if (localDataStr) {
+                        const localData = JSON.parse(localDataStr);
+                        const localItems = Array.isArray(localData.items) ? localData.items : [];
+                        
+                        // Create a map of local items that are sold/ended
+                        localItems.forEach(item => {
+                            if (item.id && (item.manuallyEnded || item.soldDate || item.soldPrice || item.endedDate)) {
+                                localSoldEndedMap.set(item.id, item);
+                            }
+                        });
+                    }
+                } catch (localError) {
+                    // If we can't read local storage, continue without merging
+                    console.warn('Could not read local storage for merge:', localError);
+                }
+                
+                // Merge: Start with backend items, but preserve sold/ended status from local items
+                const mergedItems = [];
+                const processedIds = new Set();
+                
+                // First, add all backend items (preserving sold/ended status from local if available)
+                backendItems.forEach(item => {
+                    if (item.id) {
+                        processedIds.add(item.id);
+                        const localSoldItem = localSoldEndedMap.get(item.id);
+                        
+                        if (localSoldItem) {
+                            // Local item has sold/ended status - merge with backend item
+                            // Preserve all local sold/ended flags, but use backend data for other fields
+                            const mergedItem = {
+                                ...item, // Start with backend item (has latest data)
+                                manuallyEnded: localSoldItem.manuallyEnded !== undefined ? localSoldItem.manuallyEnded : item.manuallyEnded,
+                                soldDate: localSoldItem.soldDate || item.soldDate,
+                                soldPrice: localSoldItem.soldPrice !== undefined ? localSoldItem.soldPrice : item.soldPrice,
+                                endedDate: localSoldItem.endedDate || item.endedDate
+                            };
+                            mergedItems.push(mergedItem);
+                            
+                            // Log if we preserved sold/ended status
+                            if (mergedItem.manuallyEnded || mergedItem.soldDate || mergedItem.soldPrice) {
+                                console.log(`✓ Preserved sold/ended status for item: ${item.name || item.id}`);
+                            }
+                        } else {
+                            // No local sold/ended status - use backend item as-is
+                            mergedItems.push(item);
+                        }
+                    }
+                });
+                
+                // Also add any local sold/ended items that might not be in backend yet
+                localSoldEndedMap.forEach((localItem, itemId) => {
+                    if (!processedIds.has(itemId)) {
+                        // This item is marked as sold/ended locally but not in backend yet
+                        // Add it to the merged list to preserve it
+                        mergedItems.push(localItem);
+                        console.log(`✓ Preserved local sold/ended item not yet in backend: ${localItem.name || itemId}`);
+                    }
+                });
+                
+                this.items = mergedItems;
                 
                 console.log(`✓ Successfully loaded ${this.categories.length} categories and ${this.items.length} items from key: ${oldKeyUsed || storageKey}`);
+                if (localSoldEndedMap.size > 0) {
+                    console.log(`   Merged ${localSoldEndedMap.size} sold/ended items from local storage`);
+                    
+                    // If we merged sold/ended items, save the merged data back to ensure sold/ended status persists
+                    // This prevents sold/ended items from reappearing on next load
+                    try {
+                        const mergedData = {
+                            categories: this.categories,
+                            items: this.items
+                        };
+                        localStorage.setItem(storageKey, JSON.stringify(mergedData));
+                        console.log('✓ Saved merged data (with sold/ended flags) to localStorage');
+                        
+                        // Also sync to backend if available to ensure sold/ended status is preserved there too
+                        if (useBackendStorage && backendAvailable && window.storageWrapper) {
+                            // Queue a save to backend (async, don't block)
+                            window.storageWrapper.queueBackendSave(storageKey, mergedData);
+                            console.log('✓ Queued save of merged data (with sold/ended flags) to backend');
+                        }
+                    } catch (saveError) {
+                        console.warn('Could not save merged data:', saveError);
+                        // Don't fail - data is still loaded in memory
+                    }
+                }
                 console.log('Categories:', this.categories.map(c => c.name));
                 console.log('Items sample (first 5):', this.items.slice(0, 5).map(i => i.name));
                 

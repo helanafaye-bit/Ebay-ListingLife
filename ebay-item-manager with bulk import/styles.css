@@ -2008,6 +2008,54 @@ select {
 
 .modal-content.sold-category-modal {
     max-width: 780px;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+    overflow-x: visible !important;
+    display: flex;
+    flex-direction: column;
+    /* Ensure scrollbar is visible when content overflows */
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Make form in sold category modal scrollable */
+#soldCategoryModal .modal-content form {
+    overflow-y: auto !important;
+    overflow-x: visible !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    max-height: calc(90vh - 120px) !important;
+    padding-right: 10px;
+    margin-right: -10px;
+    /* Force scrollbar visibility on form */
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Webkit scrollbar styling for sold category modal */
+.modal-content.sold-category-modal::-webkit-scrollbar,
+#soldCategoryModal .modal-content form::-webkit-scrollbar {
+    width: 12px !important;
+    display: block !important;
+}
+
+.modal-content.sold-category-modal::-webkit-scrollbar-track,
+#soldCategoryModal .modal-content form::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.15) !important;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+.modal-content.sold-category-modal::-webkit-scrollbar-thumb,
+#soldCategoryModal .modal-content form::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    border-radius: 6px;
+    border: 2px solid rgba(0, 0, 0, 0.15);
+}
+
+.modal-content.sold-category-modal::-webkit-scrollbar-thumb:hover,
+#soldCategoryModal .modal-content form::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.7) !important;
 }
 
 .modal-content.sold-subcategory-items-modal {
@@ -2464,12 +2512,22 @@ select {
     font-size: 16px;
     outline: none;
     transition: border-color 0.3s ease;
-    resize: vertical;
+    resize: vertical !important; /* Allow users to drag to resize textarea */
     font-family: inherit;
     /* Remove scrollbars from textareas - content is scrollable but scrollbar is hidden */
     overflow: auto;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE and Edge */
+    min-height: 60px; /* Minimum height to ensure resize handle is visible */
+    /* Ensure resize handle is accessible */
+    position: relative;
+    z-index: 10;
+}
+
+/* Ensure resize handle area is clickable */
+.modal textarea::-webkit-resizer {
+    background-color: rgba(0, 0, 0, 0.1);
+    border-bottom-right-radius: 8px;
 }
 
 .modal textarea::-webkit-scrollbar {
