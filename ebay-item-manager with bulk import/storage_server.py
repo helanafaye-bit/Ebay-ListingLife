@@ -120,10 +120,13 @@ def initialize_storage():
     
     # Initialize Dropbox client if using Dropbox
     dropbox_client = None
-    dropbox = None
     if STORAGE_MODE == 'dropbox':
+        # Try to import dropbox module - use local variable first to avoid shadowing global
+        dropbox_imported = None
         try:
             import dropbox
+            dropbox_imported = dropbox  # Keep reference to imported module
+            dropbox = dropbox_imported  # Update global dropbox module reference
         except ImportError as import_error:
             error_msg = str(import_error)
             if 'pkg_resources' in error_msg or 'setuptools' in error_msg:
@@ -139,7 +142,7 @@ def initialize_storage():
             STORAGE_MODE = 'local'
             dropbox = None
         
-        if dropbox and STORAGE_MODE == 'dropbox':
+        if dropbox_imported and STORAGE_MODE == 'dropbox':
             if DROPBOX_ACCESS_TOKEN:
                 # Check if token is short-lived (starts with 'sl.u.')
                 # Note: As of 2024, Dropbox only issues short-lived tokens via the app console
@@ -152,7 +155,7 @@ def initialize_storage():
                     logger.info("")
                 
                 try:
-                    dropbox_client = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+                    dropbox_client = dropbox_imported.Dropbox(DROPBOX_ACCESS_TOKEN)
                     # Test connection with retry for temporary network issues
                     max_retries = 3
                     retry_count = 0
@@ -164,8 +167,10 @@ def initialize_storage():
                             connection_success = True
                             logger.info(f"✅ Dropbox storage initialized. Folder: {DROPBOX_FOLDER}")
                             logger.info(f"   Token: {DROPBOX_ACCESS_TOKEN[:20]}... (length: {len(DROPBOX_ACCESS_TOKEN)})")
+                            # Update global dropbox module reference
+                            dropbox = dropbox_imported
                             # Success! Keep STORAGE_MODE as 'dropbox' and dropbox_client set
-                        except (dropbox.exceptions.AuthError, dropbox.exceptions.ApiError) as api_error:
+                        except (dropbox_imported.exceptions.AuthError, dropbox_imported.exceptions.ApiError) as api_error:
                             # Only retry on network/rate limit errors, not auth errors
                             error_msg = str(api_error)
                             error_type = type(api_error).__name__
@@ -200,11 +205,12 @@ def initialize_storage():
                     
                     # If we get here and connection_success is True, Dropbox is working
                     if connection_success:
-                        # Ensure STORAGE_MODE stays as 'dropbox'
+                        # Ensure STORAGE_MODE stays as 'dropbox' and update global dropbox module
                         STORAGE_MODE = 'dropbox'
+                        dropbox = dropbox_imported  # Update global dropbox module reference
                         logger.info("✅ Dropbox connection verified and active")
                     
-                except dropbox.exceptions.AuthError as auth_error:
+                except dropbox_imported.exceptions.AuthError as auth_error:
                     error_msg = str(auth_error)
                     error_type = type(auth_error).__name__
                     

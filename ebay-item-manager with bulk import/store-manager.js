@@ -3,13 +3,64 @@ class StoreManager {
     constructor() {
         this.stores = [];
         this.currentStoreId = null;
+        // Immediately restore dropdown value from localStorage to prevent flicker during navigation
+        this.restoreDropdownValueImmediately();
         this.init();
+    }
+
+    restoreDropdownValueImmediately() {
+        // Synchronously read current store from localStorage and set dropdown value immediately
+        // This prevents visual flicker when navigating between pages
+        try {
+            const storeSelect = document.getElementById('storeSelect');
+            if (!storeSelect) return;
+
+            const savedStoreId = localStorage.getItem('ListingLifeCurrentStore');
+            if (savedStoreId) {
+                // Load stores synchronously from localStorage if available
+                const savedStores = localStorage.getItem('ListingLifeStores');
+                if (savedStores) {
+                    try {
+                        const stores = JSON.parse(savedStores);
+                        // Check if saved store ID exists in stores list
+                        const store = stores.find(s => s.id === savedStoreId);
+                        if (store) {
+                            // Set value immediately if store exists
+                            // The value will be set properly once stores are loaded
+                            // but this prevents the "Select Store" flash
+                            this.currentStoreId = savedStoreId;
+                            
+                            // If dropdown already has options populated, set the value now
+                            // Otherwise, the value will be set during updateStoreDropdown()
+                            if (storeSelect.options.length > 1) {
+                                const optionExists = Array.from(storeSelect.options).some(opt => opt.value === savedStoreId);
+                                if (optionExists) {
+                                    storeSelect.value = savedStoreId;
+                                }
+                            } else {
+                                // Dropdown doesn't have options yet, but cache the store ID
+                                // so updateStoreDropdown() knows which value to set
+                                this._pendingStoreId = savedStoreId;
+                            }
+                        }
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                }
+            }
+        } catch (e) {
+            // Ignore errors during immediate restore
+        }
     }
 
     async init() {
         await this.loadStores();
         await this.migrateStoreIdsIfNeeded(); // Migrate old random IDs to deterministic IDs
         await this.loadCurrentStore();
+        // Clear pending store ID if it was set during immediate restore
+        if (this._pendingStoreId && this.currentStoreId === this._pendingStoreId) {
+            this._pendingStoreId = null;
+        }
         this.setupEventListeners();
         this.updateStoreDropdown();
     }
@@ -427,16 +478,59 @@ class StoreManager {
         const storeSelect = document.getElementById('storeSelect');
         if (!storeSelect) return;
 
-        storeSelect.innerHTML = '<option value="">Select Store</option>';
+        const currentSelectedId = storeSelect.value;
+        const currentOptionsCount = storeSelect.options.length;
+        const expectedOptionsCount = this.stores.length + 1;
+        
+        // If dropdown already shows the correct store and stores list hasn't changed, skip update completely
+        // This prevents unnecessary flicker during navigation
+        if (currentSelectedId === this.currentStoreId && 
+            currentOptionsCount === expectedOptionsCount && 
+            this.currentStoreId) {
+            // Already correctly set, no need to update
+            return;
+        }
+
+        // Preserve the currently selected value to restore it immediately after update
+        const valueToRestore = this.currentStoreId || currentSelectedId;
+        
+        // Build all options in a DocumentFragment first to minimize visual flicker
+        const fragment = document.createDocumentFragment();
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select Store';
+        fragment.appendChild(defaultOption);
+        
         this.stores.forEach(store => {
             const option = document.createElement('option');
             option.value = store.id;
             option.textContent = store.name;
-            if (store.id === this.currentStoreId) {
+            // Pre-select if this is the store we want to restore
+            if (store.id === valueToRestore) {
                 option.selected = true;
             }
-            storeSelect.appendChild(option);
+            fragment.appendChild(option);
         });
+        
+        // Replace all options atomically using replaceChildren to prevent flicker
+        // Use a microtask to ensure value is set immediately in same render cycle
+        storeSelect.replaceChildren(fragment);
+        
+        // Immediately restore the selected value in the same synchronous execution
+        // This prevents the browser from showing "Select Store" even for a frame
+        if (valueToRestore && storeSelect.value !== valueToRestore) {
+            storeSelect.value = valueToRestore;
+        }
+        
+        // Double-check: if value still doesn't match, force it one more time
+        // This catches any edge cases where the option wasn't found
+        if (this.currentStoreId && storeSelect.value !== this.currentStoreId) {
+            // Try setting it again - the option should exist now
+            const optionExists = Array.from(storeSelect.options).some(opt => opt.value === this.currentStoreId);
+            if (optionExists) {
+                storeSelect.value = this.currentStoreId;
+            }
+        }
     }
 
     switchStore(storeId) {
