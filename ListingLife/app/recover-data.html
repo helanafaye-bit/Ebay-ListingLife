@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recover ListingLife Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
+        .instructions strong {
+            color: #856404;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.recover {
+            background: #007bff;
+        }
+        button.recover:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+            white-space: pre-wrap;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        .data-list {
+            margin: 20px 0;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .data-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .data-item.found {
+            border-left-color: #28a745;
+        }
+        .data-item.empty {
+            border-left-color: #dc3545;
+        }
+        .data-item strong {
+            color: #333;
+        }
+        .data-item .details {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Recover ListingLife Data</h1>
+        
+        <div class="instructions">
+            <strong>This tool will:</strong>
+            <ol>
+                <li>Scan your browser's localStorage for any ListingLife data</li>
+                <li>Find data from old versions (even if stored under different keys)</li>
+                <li>Automatically migrate it to the current version's format</li>
+                <li>Sync it to Dropbox if configured</li>
+            </ol>
+            <p style="margin-top: 10px;"><strong>Note:</strong> This works on the same browser/machine. Your old data should still be in localStorage.</p>
+        </div>
+
+        <div>
+            <button onclick="scanForData()" class="recover">🔍 Scan for Old Data</button>
+            <button onclick="recoverAll()" class="recover">✅ Recover All Found Data</button>
+            <button onclick="checkCurrentData()" style="background: #17a2b8;">📊 Check Current Data</button>
+        </div>
+
+        <div id="dataList" class="data-list" style="display: none;"></div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        let foundData = [];
+
+        function scanForData() {
+            foundData = [];
+            const dataList = document.getElementById('dataList');
+            dataList.innerHTML = '';
+            dataList.style.display = 'block';
+
+            // Get all localStorage keys
+            const allKeys = Object.keys(localStorage);
+            
+            // Look for ListingLife-related keys
+            const relevantKeys = allKeys.filter(key => 
+                key.includes('Ebay') || 
+                key.includes('eBay') || 
+                key.includes('Listing') || 
+                key.includes('Store') ||
+                key.includes('Sold') ||
+                key.includes('Pending') ||
+                key.includes('Imported')
+            );
+
+            if (relevantKeys.length === 0) {
+                showStatus('No ListingLife data found in localStorage.', 'info');
+                return;
+            }
+
+            // Check each key
+            relevantKeys.forEach(key => {
+                try {
+                    const data = localStorage.getItem(key);
+                    if (!data || data.trim().length === 0) {
+                        addDataItem(key, null, 'empty');
+                        return;
+                    }
+
+                    let parsed;
+                    let itemType = 'unknown';
+                    let details = '';
+
+                    try {
+                        parsed = JSON.parse(data);
+                        
+                        if (parsed.categories !== undefined || parsed.items !== undefined) {
+                            itemType = 'listings';
+                            const catCount = parsed.categories?.length || 0;
+                            const itemCount = parsed.items?.length || 0;
+                            details = `${catCount} categories, ${itemCount} items`;
+                            foundData.push({ key, data: parsed, type: 'listings' });
+                        } else if (Array.isArray(parsed)) {
+                            itemType = 'array';
+                            details = `${parsed.length} items`;
+                            foundData.push({ key, data: parsed, type: 'array' });
+                        } else if (typeof parsed === 'object') {
+                            itemType = 'object';
+                            details = 'Configuration or settings data';
+                            foundData.push({ key, data: parsed, type: 'object' });
+                        } else {
+                            itemType = 'other';
+                            details = 'Other data';
+                        }
+                    } catch (e) {
+                        // Not JSON, might be a string
+                        itemType = 'string';
+                        details = `String value (${data.length} chars)`;
+                        foundData.push({ key, data: data, type: 'string' });
+                    }
+
+                    addDataItem(key, details, 'found', itemType);
+                } catch (error) {
+                    addDataItem(key, `Error: ${error.message}`, 'empty');
+                }
+            });
+
+            showStatus(`Found ${foundData.length} data item(s) in localStorage. Click "Recover All Found Data" to migrate them.`, 'info');
+        }
+
+        function addDataItem(key, details, status, type) {
+            const dataList = document.getElementById('dataList');
+            const item = document.createElement('div');
+            item.className = `data-item ${status}`;
+            
+            let typeIcon = '📄';
+            if (type === 'listings') typeIcon = '📦';
+            else if (type === 'array') typeIcon = '📋';
+            else if (type === 'object') typeIcon = '⚙️';
+            else if (type === 'string') typeIcon = '📝';
+            
+            item.innerHTML = `
+                <strong>${typeIcon} ${key}</strong>
+                ${details ? `<div class="details">${details}</div>` : ''}
+            `;
+            dataList.appendChild(item);
+        }
+
+        async function recoverAll() {
+            if (foundData.length === 0) {
+                showStatus('No data found. Please scan for data first.', 'error');
+                return;
+            }
+
+            let recovered = 0;
+            let errors = 0;
+            const messages = [];
+
+            for (const item of foundData) {
+                try {
+                    // Determine the correct storage key based on the item
+                    let targetKey = item.key;
+                    
+                    // If it's listings data, use the store-specific key format
+                    if (item.type === 'listings') {
+                        // Check if store manager exists
+                        if (window.storeManager) {
+                            try {
+                                targetKey = window.storeManager.getStoreDataKey('EbayListingLife');
+                            } catch (e) {
+                                // Store manager not ready, use original key
+                                targetKey = 'EbayListingLife';
+                            }
+                        } else {
+                            targetKey = 'EbayListingLife';
+                        }
+                    } else if (item.key.includes('SoldItemsTrends')) {
+                        if (window.storeManager) {
+                            try {
+                                targetKey = window.storeManager.getStoreDataKey('SoldItemsTrends');
+                            } catch (e) {
+                                targetKey = 'SoldItemsTrends';
+                            }
+                        } else {
+                            targetKey = 'SoldItemsTrends';
+                        }
+                    }
+
+                    // Save to localStorage
+                    if (item.type === 'string') {
+                        localStorage.setItem(targetKey, item.data);
+                    } else {
+                        localStorage.setItem(targetKey, JSON.stringify(item.data));
+                    }
+
+                    // Try to sync to backend if available
+                    if (window.storageWrapper && window.storageWrapper.useBackend && window.storageWrapper.backendAvailable) {
+                        try {
+                            await window.storageWrapper.saveToBackend(targetKey, item.data);
+                            messages.push(`✓ Recovered and synced: ${item.key} → ${targetKey}`);
+                        } catch (syncError) {
+                            messages.push(`✓ Recovered: ${item.key} → ${targetKey} (sync to backend failed: ${syncError.message})`);
+                        }
+                    } else {
+                        messages.push(`✓ Recovered: ${item.key} → ${targetKey}`);
+                    }
+
+                    recovered++;
+                } catch (error) {
+                    errors++;
+                    messages.push(`✗ Error recovering ${item.key}: ${error.message}`);
+                }
+            }
+
+            let statusMsg = `Recovery complete!\n\n`;
+            statusMsg += `Recovered: ${recovered}\n`;
+            if (errors > 0) statusMsg += `Errors: ${errors}\n`;
+            statusMsg += `\nDetails:\n${messages.join('\n')}\n\n`;
+            statusMsg += `Please refresh your ListingLife page to see your data.`;
+
+            showStatus(statusMsg, recovered > 0 ? 'success' : 'error');
+        }
+
+        function checkCurrentData() {
+            const keys = Object.keys(localStorage);
+            const relevantKeys = keys.filter(key => 
+                key.includes('Ebay') || 
+                key.includes('eBay') || 
+                key.includes('Listing') || 
+                key.includes('Store') ||
+                key.includes('Sold') ||
+                key.includes('Pending')
+            );
+
+            if (relevantKeys.length === 0) {
+                showStatus('No ListingLife data found in localStorage.', 'info');
+                return;
+            }
+
+            let info = `Found ${relevantKeys.length} data key(s):\n\n`;
+            relevantKeys.forEach(key => {
+                try {
+                    const data = localStorage.getItem(key);
+                    const size = data.length;
+                    const parsed = JSON.parse(data);
+                    
+                    info += `• ${key}: ${(size / 1024).toFixed(2)} KB`;
+                    if (parsed.categories) info += ` (${parsed.categories.length} categories)`;
+                    if (parsed.items) info += ` (${parsed.items.length} items)`;
+                    if (Array.isArray(parsed)) info += ` (${parsed.length} items)`;
+                    info += '\n';
+                } catch (e) {
+                    info += `• ${key}: ${(data.length / 1024).toFixed(2)} KB (string value)\n`;
+                }
+            });
+            showStatus(info, 'info');
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.className = `status ${type}`;
+            status.textContent = message;
+        }
+
+        // Auto-scan on load
+        window.addEventListener('load', () => {
+            scanForData();
+        });
+    </script>
+</body>
+</html>
+

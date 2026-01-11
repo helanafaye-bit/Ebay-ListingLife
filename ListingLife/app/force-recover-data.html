@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Force Recover ListingLife Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
+        button {
+            background: #dc3545;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #c82333;
+        }
+        button.success {
+            background: #28a745;
+        }
+        button.success:hover {
+            background: #218838;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        .key-list {
+            margin: 20px 0;
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .key-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #6c757d;
+        }
+        .key-item.has-data {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        .key-item strong {
+            color: #333;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .key-item .preview {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+            max-height: 100px;
+            overflow-y: auto;
+            font-family: monospace;
+            background: white;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .key-item .actions {
+            margin-top: 10px;
+        }
+        .key-item button {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Force Recover ListingLife Data</h1>
+        
+        <div class="instructions">
+            <strong>This tool will:</strong>
+            <ol>
+                <li>Show ALL localStorage keys (not just ListingLife ones)</li>
+                <li>Display a preview of each key's content</li>
+                <li>Let you manually recover any key that looks like ListingLife data</li>
+                <li>Force migration to the correct storage key</li>
+            </ol>
+        </div>
+
+        <div>
+            <button onclick="scanAllKeys()" class="success">🔍 Scan ALL localStorage Keys</button>
+            <button onclick="forceRecoverListings()">🚀 Force Recover Listings Data</button>
+            <button onclick="clearStatus()">Clear Status</button>
+        </div>
+
+        <div id="keyList" class="key-list" style="display: none;"></div>
+
+        <div id="status" class="status info">Click "Scan ALL localStorage Keys" to see everything in your browser's storage.</div>
+    </div>
+
+    <script>
+        let allKeysData = [];
+
+        function scanAllKeys() {
+            allKeysData = [];
+            const keyList = document.getElementById('keyList');
+            keyList.innerHTML = '';
+            keyList.style.display = 'block';
+
+            const allKeys = Object.keys(localStorage);
+            showStatus(`Found ${allKeys.length} total keys in localStorage. Scanning...`, 'info');
+
+            allKeys.forEach(key => {
+                try {
+                    const data = localStorage.getItem(key);
+                    if (!data || data.trim().length === 0) {
+                        addKeyItem(key, null, 'empty');
+                        return;
+                    }
+
+                    let parsed;
+                    let preview = '';
+                    let hasListingsData = false;
+
+                    try {
+                        parsed = JSON.parse(data);
+                        preview = JSON.stringify(parsed, null, 2).substring(0, 500);
+                        
+                        // Check if this looks like listings data
+                        if (parsed.categories !== undefined || parsed.items !== undefined) {
+                            hasListingsData = true;
+                            const catCount = parsed.categories?.length || 0;
+                            const itemCount = parsed.items?.length || 0;
+                            preview = `CATEGORIES: ${catCount}, ITEMS: ${itemCount}\n\n${preview}`;
+                        }
+                    } catch (e) {
+                        // Not JSON
+                        preview = data.substring(0, 200);
+                    }
+
+                    allKeysData.push({ key, data, parsed, hasListingsData, preview });
+                    addKeyItem(key, preview, hasListingsData ? 'has-data' : 'normal', hasListingsData);
+                } catch (error) {
+                    addKeyItem(key, `Error: ${error.message}`, 'error');
+                }
+            });
+
+            const listingsKeys = allKeysData.filter(k => k.hasListingsData);
+            if (listingsKeys.length > 0) {
+                showStatus(`✓ Found ${listingsKeys.length} key(s) with listings data:\n${listingsKeys.map(k => `  - ${k.key}`).join('\n')}\n\nClick "Force Recover Listings Data" to migrate them.`, 'success');
+            } else {
+                showStatus(`⚠️ Scanned ${allKeys.length} keys but found NO keys with categories/items data.\n\nThis might mean:\n1. The data was cleared from localStorage\n2. The data is in a different browser\n3. The data structure is different than expected\n\nCheck the key list above for any that might contain your data.`, 'error');
+            }
+        }
+
+        function addKeyItem(key, preview, className, hasListingsData) {
+            const keyList = document.getElementById('keyList');
+            const item = document.createElement('div');
+            item.className = `key-item ${className}`;
+            
+            let icon = '📄';
+            if (hasListingsData) icon = '📦 LISTINGS DATA FOUND!';
+            
+            item.innerHTML = `
+                <strong>${icon} ${key}</strong>
+                ${preview ? `<div class="preview">${preview}${preview.length >= 500 ? '...' : ''}</div>` : '<div class="preview">(empty)</div>'}
+                ${hasListingsData ? `<div class="actions">
+                    <button onclick="recoverKey('${key}')" class="success">Recover This Key</button>
+                </div>` : ''}
+            `;
+            keyList.appendChild(item);
+        }
+
+        function recoverKey(key) {
+            const keyData = allKeysData.find(k => k.key === key);
+            if (!keyData || !keyData.hasListingsData) {
+                showStatus(`Key ${key} does not contain listings data.`, 'error');
+                return;
+            }
+
+            try {
+                // Determine target key
+                let targetKey = 'EbayListingLife';
+                
+                // Try to get store-specific key if store manager exists
+                if (window.storeManager) {
+                    try {
+                        targetKey = window.storeManager.getStoreDataKey('EbayListingLife');
+                    } catch (e) {
+                        // Use default
+                    }
+                }
+
+                // Save to target key
+                localStorage.setItem(targetKey, JSON.stringify(keyData.parsed));
+
+                // Try to sync to backend
+                if (window.storageWrapper && window.storageWrapper.useBackend && window.storageWrapper.backendAvailable) {
+                    window.storageWrapper.saveToBackend(targetKey, keyData.parsed).then(() => {
+                        showStatus(`✓ Successfully recovered ${key} → ${targetKey} and synced to backend!\n\nPlease refresh your ListingLife page.`, 'success');
+                    }).catch(err => {
+                        showStatus(`✓ Recovered ${key} → ${targetKey} (backend sync failed: ${err.message})\n\nPlease refresh your ListingLife page.`, 'success');
+                    });
+                } else {
+                    showStatus(`✓ Successfully recovered ${key} → ${targetKey}!\n\nPlease refresh your ListingLife page.`, 'success');
+                }
+            } catch (error) {
+                showStatus(`✗ Error recovering ${key}: ${error.message}`, 'error');
+            }
+        }
+
+        function forceRecoverListings() {
+            const listingsKeys = allKeysData.filter(k => k.hasListingsData);
+            
+            if (listingsKeys.length === 0) {
+                showStatus('No listings data found. Please scan keys first.', 'error');
+                return;
+            }
+
+            let recovered = 0;
+            const messages = [];
+
+            listingsKeys.forEach(keyData => {
+                try {
+                    let targetKey = 'EbayListingLife';
+                    
+                    if (window.storeManager) {
+                        try {
+                            targetKey = window.storeManager.getStoreDataKey('EbayListingLife');
+                        } catch (e) {
+                            // Use default
+                        }
+                    }
+
+                    // Save to target key
+                    localStorage.setItem(targetKey, JSON.stringify(keyData.parsed));
+                    
+                    // Also save to old key name as backup
+                    localStorage.setItem('EbayListingLife', JSON.stringify(keyData.parsed));
+
+                    messages.push(`✓ Recovered: ${keyData.key} → ${targetKey} (${keyData.parsed.categories?.length || 0} categories, ${keyData.parsed.items?.length || 0} items)`);
+                    recovered++;
+
+                    // Try to sync to backend
+                    if (window.storageWrapper && window.storageWrapper.useBackend && window.storageWrapper.backendAvailable) {
+                        window.storageWrapper.saveToBackend(targetKey, keyData.parsed).catch(() => {
+                            // Ignore backend errors for now
+                        });
+                    }
+                } catch (error) {
+                    messages.push(`✗ Error recovering ${keyData.key}: ${error.message}`);
+                }
+            });
+
+            let statusMsg = `Force Recovery Complete!\n\n`;
+            statusMsg += `Recovered: ${recovered} key(s)\n\n`;
+            statusMsg += `Details:\n${messages.join('\n')}\n\n`;
+            statusMsg += `IMPORTANT: Please refresh your ListingLife page (ebaylistings.html) to see your data.\n`;
+            statusMsg += `If data still doesn't show, check the browser console (F12) for error messages.`;
+
+            showStatus(statusMsg, recovered > 0 ? 'success' : 'error');
+        }
+
+        function clearStatus() {
+            document.getElementById('status').textContent = '';
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.className = `status ${type}`;
+            status.textContent = message;
+        }
+
+        // Auto-scan on load
+        window.addEventListener('load', () => {
+            setTimeout(scanAllKeys, 500);
+        });
+    </script>
+</body>
+</html>
+

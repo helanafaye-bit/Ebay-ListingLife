@@ -1,0 +1,94 @@
+{
+  "periods": [
+    {
+      "id": "period-mi6q03gz-24c0ca",
+      "name": "2025",
+      "description": "",
+      "categories": [
+        {
+          "id": "cat-mi6qa34f-544700",
+          "name": "photography",
+          "description": "",
+          "createdAt": "2025-11-20T01:03:49.839Z",
+          "updatedAt": "2025-11-20T22:00:31.115Z",
+          "subcategories": [
+            {
+              "id": "sub-mi6qa34f-3c99f8",
+              "name": "Digital cameras",
+              "count": 1,
+              "price": null,
+              "items": [
+                {
+                  "id": "solditem-mi6r31ps-9270ac",
+                  "label": "Big Glass thing",
+                  "price": 10,
+                  "photo": "https://i.ebayimg.com/images/g/DnQAAeSwfh9oLLU5/s-l1600.webp",
+                  "createdAt": "2025-11-20T01:26:21.040Z",
+                  "updatedAt": "2025-11-20T01:27:01.230Z"
+                }
+              ],
+              "createdAt": "2025-11-20T01:03:49.839Z",
+              "updatedAt": "2025-11-20T01:27:01.230Z"
+            },
+            {
+              "id": "sub-mi6qa34f-4475ef",
+              "name": "Lenses",
+              "count": 2,
+              "price": null,
+              "items": [
+                {
+                  "id": "solditem-mi6qo46j-b9d57f",
+                  "label": "Camera 2",
+                  "price": 20,
+                  "photo": null,
+                  "createdAt": "2025-11-20T01:14:44.395Z",
+                  "updatedAt": "2025-11-20T01:19:32.978Z"
+                },
+                {
+                  "id": "solditem-mi6qapty-0c4449",
+                  "label": "Vintage Lens",
+                  "price": 10,
+                  "photo": null,
+                  "createdAt": "2025-11-20T01:04:19.270Z",
+                  "updatedAt": "2025-11-20T22:00:31.115Z"
+                }
+              ],
+              "createdAt": "2025-11-20T01:03:49.839Z",
+              "updatedAt": "2025-11-20T22:00:31.115Z"
+            },
+            {
+              "id": "sub-mi6qa34f-20b0f6",
+              "name": "Film cameras",
+              "count": 1,
+              "price": null,
+              "items": [
+                {
+                  "id": "solditem-mi6qttpq-46ae87",
+                  "label": "Camera",
+                  "price": 33,
+                  "photo": null,
+                  "createdAt": "2025-11-20T01:19:10.766Z",
+                  "updatedAt": "2025-11-20T01:19:10.766Z"
+                }
+              ],
+              "createdAt": "2025-11-20T01:03:49.839Z",
+              "updatedAt": "2025-11-20T22:00:31.115Z"
+            },
+            {
+              "id": "sub-mi6r31ps-e2a5fc",
+              "name": "Camera",
+              "count": 0,
+              "price": null,
+              "items": [],
+              "createdAt": "2025-11-20T01:26:21.040Z",
+              "updatedAt": "2025-11-20T01:27:01.230Z"
+            }
+          ]
+        }
+      ],
+      "createdAt": "2025-11-20T00:56:03.731Z",
+      "updatedAt": "2025-11-20T22:00:31.115Z"
+    }
+  ],
+  "currentPeriodId": "period-mi6q03gz-24c0ca"
+}
