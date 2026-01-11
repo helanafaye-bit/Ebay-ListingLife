@@ -353,8 +353,7 @@ class EbayListingLife {
         // Category sort dropdown (for items within a category)
         this.addListenerById('categorySortSelect', 'change', (e) => this.handleCategorySort(e));
         
-        // Categories sort dropdown (for the categories list)
-        this.addListenerById('categoriesSortSelect', 'change', (e) => this.handleCategoriesSort(e));
+        // Categories sort dropdown (for the categories list) - listener is attached in renderCategories() since element doesn't exist at init time
 
         // Modal forms
         this.addListenerById('categoryForm', 'submit', (e) => this.handleCategorySubmit(e));

@@ -3,6 +3,8 @@ class PendingItemsManager {
     constructor() {
         this.pendingItems = [];
         this.currentMovingItem = null;
+        this.currentMovingItems = []; // For bulk moves
+        this.selectedItemIds = new Set(); // Track selected items
         this.periods = [];
         this.currentPeriodId = null;
         
@@ -18,9 +20,14 @@ class PendingItemsManager {
         this.clearPendingItemsBtn = document.getElementById('clearPendingItemsBtn');
         this.pendingPeriodSelect = document.getElementById('pendingPeriodSelect');
         this.createPeriodFromPendingBtn = document.getElementById('createPeriodFromPendingBtn');
+        this.selectAllPendingItems = document.getElementById('selectAllPendingItems');
+        this.moveSelectedItemsBtn = document.getElementById('moveSelectedItemsBtn');
+        this.selectedItemsCount = document.getElementById('selectedItemsCount');
         
         // Modal elements
         this.movePendingItemModal = document.getElementById('movePendingItemModal');
+        this.movePendingItemModalTitle = document.getElementById('movePendingItemModalTitle');
+        this.movePendingItemModalSubtitle = document.getElementById('movePendingItemModalSubtitle');
         this.movePendingItemForm = document.getElementById('movePendingItemForm');
         this.movePendingPeriod = document.getElementById('movePendingPeriod');
         this.movePendingCategory = document.getElementById('movePendingCategory');
@@ -31,6 +38,7 @@ class PendingItemsManager {
         this.newSubcategoryFromPendingContainer = document.getElementById('newSubcategoryFromPendingContainer');
         this.createPeriodFromPendingModal = document.getElementById('createPeriodFromPendingModal');
         this.createPeriodFromPendingForm = document.getElementById('createPeriodFromPendingForm');
+        this.movePendingItemSubmitBtn = document.getElementById('movePendingItemSubmitBtn');
         
         this.init();
     }
@@ -125,6 +133,16 @@ class PendingItemsManager {
         // Create period form
         if (this.createPeriodFromPendingForm) {
             this.createPeriodFromPendingForm.addEventListener('submit', (e) => this.handleCreatePeriod(e));
+        }
+
+        // Select all checkbox
+        if (this.selectAllPendingItems) {
+            this.selectAllPendingItems.addEventListener('change', (e) => this.handleSelectAll(e.target.checked));
+        }
+
+        // Move selected items button
+        if (this.moveSelectedItemsBtn) {
+            this.moveSelectedItemsBtn.addEventListener('click', () => this.openMoveSelectedItemsModal());
         }
 
         // Close modals
@@ -910,6 +928,9 @@ class PendingItemsManager {
 
         // Attach event listeners
         this.attachItemEventListeners();
+        
+        // Update selection UI
+        this.updateSelectionUI();
     }
 
     getFilteredItems() {
@@ -927,28 +948,48 @@ class PendingItemsManager {
         const photoHtml = item.photo 
             ? `<div class="pending-item-photo"><img src="${this.escapeHtml(item.photo)}" alt="${safeLabel}" onerror="this.style.display='none'; const placeholder = this.parentElement?.querySelector('.pending-item-photo-placeholder'); if (placeholder) placeholder.style.display='flex';"></div><div class="pending-item-photo-placeholder" style="display: none;"><span>📷</span></div>`
             : '<div class="pending-item-photo-placeholder"><span>📷</span></div>';
+        const isChecked = this.selectedItemIds.has(item.id) ? 'checked' : '';
 
         return `
             <div class="pending-item-card" data-item-id="${item.id}">
-                <div class="pending-item-photo-container">
-                    ${photoHtml}
-                </div>
-                <div class="pending-item-details">
-                    <h3 class="pending-item-title">${safeLabel}</h3>
-                    <div class="pending-item-price">£${price}</div>
-                </div>
-                <div class="pending-item-actions">
-                    <button class="btn btn-primary btn-small move-pending-item-btn" data-item-id="${item.id}">Move to Category</button>
-                    <button class="btn btn-danger btn-small remove-pending-item-btn" data-item-id="${item.id}">Remove</button>
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                    <input type="checkbox" class="pending-item-checkbox" data-item-id="${item.id}" ${isChecked} style="width: 20px; height: 20px; cursor: pointer; margin-top: 4px; flex-shrink: 0;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div class="pending-item-photo-container">
+                            ${photoHtml}
+                        </div>
+                        <div class="pending-item-details">
+                            <h3 class="pending-item-title">${safeLabel}</h3>
+                            <div class="pending-item-price">£${price}</div>
+                        </div>
+                        <div class="pending-item-actions">
+                            <button class="btn btn-primary btn-small move-pending-item-btn" data-item-id="${item.id}">Move to Category</button>
+                            <button class="btn btn-danger btn-small remove-pending-item-btn" data-item-id="${item.id}">Remove</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
     }
 
     attachItemEventListeners() {
+        // Checkboxes
+        document.querySelectorAll('.pending-item-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const itemId = e.target.getAttribute('data-item-id');
+                if (e.target.checked) {
+                    this.selectedItemIds.add(itemId);
+                } else {
+                    this.selectedItemIds.delete(itemId);
+                }
+                this.updateSelectionUI();
+            });
+        });
+
         // Move buttons
         document.querySelectorAll('.move-pending-item-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const itemId = e.target.getAttribute('data-item-id');
                 this.openMoveItemModal(itemId);
             });
@@ -957,10 +998,67 @@ class PendingItemsManager {
         // Remove buttons
         document.querySelectorAll('.remove-pending-item-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const itemId = e.target.getAttribute('data-item-id');
                 this.removePendingItem(itemId);
             });
         });
+    }
+
+    handleSelectAll(checked) {
+        const filteredItems = this.getFilteredItems();
+        if (checked) {
+            filteredItems.forEach(item => this.selectedItemIds.add(item.id));
+        } else {
+            filteredItems.forEach(item => this.selectedItemIds.delete(item.id));
+        }
+        this.renderPendingItems(); // Re-render to update checkboxes
+        this.updateSelectionUI();
+    }
+
+    updateSelectionUI() {
+        const count = this.selectedItemIds.size;
+        if (this.selectedItemsCount) {
+            this.selectedItemsCount.textContent = count;
+        }
+        if (this.moveSelectedItemsBtn) {
+            this.moveSelectedItemsBtn.style.display = count > 0 ? 'inline-flex' : 'none';
+        }
+        
+        // Update select all checkbox state
+        if (this.selectAllPendingItems) {
+            const filteredItems = this.getFilteredItems();
+            const allSelected = filteredItems.length > 0 && filteredItems.every(item => this.selectedItemIds.has(item.id));
+            this.selectAllPendingItems.checked = allSelected;
+            this.selectAllPendingItems.indeterminate = !allSelected && filteredItems.some(item => this.selectedItemIds.has(item.id));
+        }
+    }
+
+    openMoveSelectedItemsModal() {
+        const filteredItems = this.getFilteredItems();
+        this.currentMovingItems = filteredItems.filter(item => this.selectedItemIds.has(item.id));
+        
+        if (this.currentMovingItems.length === 0) {
+            this.showNotification('No items selected.', 'warning');
+            return;
+        }
+
+        if (!this.movePendingItemModal) return;
+
+        // Update modal title and subtitle
+        if (this.movePendingItemModalTitle) {
+            this.movePendingItemModalTitle.textContent = `Move ${this.currentMovingItems.length} Item${this.currentMovingItems.length !== 1 ? 's' : ''} to Category`;
+        }
+        if (this.movePendingItemModalSubtitle) {
+            this.movePendingItemModalSubtitle.textContent = `Assign ${this.currentMovingItems.length} selected item${this.currentMovingItems.length !== 1 ? 's' : ''} to a period, category, and subcategory.`;
+        }
+        if (this.movePendingItemSubmitBtn) {
+            this.movePendingItemSubmitBtn.textContent = `Move ${this.currentMovingItems.length} Item${this.currentMovingItems.length !== 1 ? 's' : ''}`;
+        }
+
+        this.currentMovingItem = null; // Clear single item selection
+        this.updateMoveModalPeriods();
+        this.movePendingItemModal.style.display = 'block';
     }
 
     openMoveItemModal(itemId) {
@@ -968,6 +1066,19 @@ class PendingItemsManager {
         if (!item || !this.movePendingItemModal) return;
 
         this.currentMovingItem = item;
+        this.currentMovingItems = []; // Clear bulk selection
+        
+        // Update modal title and subtitle for single item
+        if (this.movePendingItemModalTitle) {
+            this.movePendingItemModalTitle.textContent = 'Move Item to Category';
+        }
+        if (this.movePendingItemModalSubtitle) {
+            this.movePendingItemModalSubtitle.textContent = 'Assign this item to a period, category, and subcategory.';
+        }
+        if (this.movePendingItemSubmitBtn) {
+            this.movePendingItemSubmitBtn.textContent = 'Move Item';
+        }
+
         this.updateMoveModalPeriods();
         this.movePendingItemModal.style.display = 'block';
     }
@@ -1056,8 +1167,12 @@ class PendingItemsManager {
     async handleMovePendingItem(e) {
         e.preventDefault();
 
-        if (!this.currentMovingItem) {
-            this.showNotification('Item data not found.', 'error');
+        // Determine which items to move
+        const itemsToMove = this.currentMovingItems.length > 0 ? this.currentMovingItems : 
+                           (this.currentMovingItem ? [this.currentMovingItem] : []);
+
+        if (itemsToMove.length === 0) {
+            this.showNotification('No items selected to move.', 'error');
             return;
         }
 
@@ -1156,20 +1271,20 @@ class PendingItemsManager {
                 return;
             }
 
-            // Add item to subcategory
+            // Add all items to subcategory
             const timestamp = new Date().toISOString();
-            const movedItem = {
+            const movedItems = itemsToMove.map(item => ({
                 id: this.generateId('solditem'),
-                label: this.currentMovingItem.label || '',
-                price: this.currentMovingItem.price || 0,
-                photo: this.currentMovingItem.photo || null,
-                note: this.currentMovingItem.note || null,
+                label: item.label || '',
+                price: item.price || 0,
+                photo: item.photo || null,
+                note: item.note || null,
                 createdAt: timestamp,
                 updatedAt: timestamp
-            };
+            }));
 
             if (!subcategory.items) subcategory.items = [];
-            subcategory.items.push(movedItem);
+            subcategory.items.push(...movedItems);
             subcategory.count = subcategory.items.length;
             subcategory.updatedAt = timestamp;
             category.updatedAt = timestamp;
@@ -1179,19 +1294,26 @@ class PendingItemsManager {
             localStorage.setItem(storageKey, JSON.stringify(data));
 
             // Remove from pending items
-            this.pendingItems = this.pendingItems.filter(i => i.id !== this.currentMovingItem.id);
+            const itemIdsToRemove = new Set(itemsToMove.map(item => item.id));
+            this.pendingItems = this.pendingItems.filter(i => !itemIdsToRemove.has(i.id));
+            
+            // Clear selected items
+            itemsToMove.forEach(item => this.selectedItemIds.delete(item.id));
+            
             this.savePendingItems();
 
             // Close modal and refresh
             this.closeModal('movePendingItemModal');
             this.renderPendingItems();
-            this.showNotification('Item moved successfully!', 'success');
+            this.updateSelectionUI();
+            this.showNotification(`${itemsToMove.length} item${itemsToMove.length !== 1 ? 's' : ''} moved successfully!`, 'success');
 
             // Reset form
             this.movePendingItemForm.reset();
             this.newCategoryFromPendingContainer.style.display = 'none';
             this.newSubcategoryFromPendingContainer.style.display = 'none';
             this.currentMovingItem = null;
+            this.currentMovingItems = [];
 
         } catch (error) {
             console.error('Error moving item:', error);
@@ -1202,8 +1324,10 @@ class PendingItemsManager {
     removePendingItem(itemId) {
         if (confirm('Are you sure you want to remove this item from pending?')) {
             this.pendingItems = this.pendingItems.filter(i => i.id !== itemId);
+            this.selectedItemIds.delete(itemId);
             this.savePendingItems();
             this.renderPendingItems();
+            this.updateSelectionUI();
             this.showNotification('Item removed from pending.', 'success');
         }
     }
@@ -1225,8 +1349,10 @@ class PendingItemsManager {
         // Log before clearing for safety/debugging
         console.log(`⚠️ User confirmed: Clearing ${itemCount} pending item(s)`);
         this.pendingItems = [];
+        this.selectedItemIds.clear();
         this.savePendingItems();
         this.renderPendingItems();
+        this.updateSelectionUI();
         this.showNotification(`All ${itemCount} pending item(s) cleared.`, 'success');
     }
 
@@ -1345,6 +1471,20 @@ class PendingItemsManager {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.style.display = 'none';
+        }
+        // Reset move modal state when closing
+        if (modalId === 'movePendingItemModal') {
+            this.currentMovingItem = null;
+            this.currentMovingItems = [];
+            if (this.movePendingItemForm) {
+                this.movePendingItemForm.reset();
+            }
+            if (this.newCategoryFromPendingContainer) {
+                this.newCategoryFromPendingContainer.style.display = 'none';
+            }
+            if (this.newSubcategoryFromPendingContainer) {
+                this.newSubcategoryFromPendingContainer.style.display = 'none';
+            }
         }
     }
 
