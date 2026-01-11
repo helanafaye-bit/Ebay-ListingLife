@@ -5,5 +5,6 @@ A simple interface for your active listings of an E-commerce site, split into ca
 Ensure Python is installed.
 Launch Install requirments when first downloaded.
 
-Upon every launch, launch server storage. bat & EbayListings.html (the app)
-You will need to generate a short lived dropbox token every time and add it in the HTML app settings.
+Open 'ListingLIFE.bat' to open the app & storage server
+
+You will need to generate a short lived dropbox token every time, add it in the HTML app settings and save.
