@@ -314,6 +314,11 @@
             <span class="close" data-close-modal="soldItemModal">&times;</span>
             <h2>Mark Item as Sold</h2>
             <form id="soldItemForm">
+                <label for="soldItemPeriod">Select Period</label>
+                <select id="soldItemPeriod" required>
+                    <option value="">Select a period...</option>
+                </select>
+                
                 <label for="soldItemCategory">Select Category</label>
                 <div style="display: flex; gap: 8px; align-items: flex-end;">
                     <select id="soldItemCategory" style="flex: 1;" required>

@@ -361,6 +361,7 @@ class EbayListingLife {
         this.addListenerById('itemDetailForm', 'submit', (e) => this.handleItemDetailSubmit(e));
         this.addListenerById('categoryAverageForm', 'submit', (e) => this.handleAverageFormSubmit(e));
         this.addListenerById('soldItemForm', 'submit', (e) => this.handleSoldItemSubmit(e));
+        this.addListenerById('soldItemPeriod', 'change', () => this.handleSoldPeriodChange());
         this.addListenerById('soldItemCategory', 'change', () => this.handleSoldCategoryChange());
         this.addListenerById('createCategoryBtn', 'click', () => this.toggleNewCategoryInput());
         this.addListenerById('createSubcategoryBtn', 'click', () => this.toggleNewSubcategoryInput());
@@ -1452,7 +1453,8 @@ class EbayListingLife {
         const modal = document.getElementById('soldItemModal');
         if (!modal) return;
 
-        // Load sold categories and populate dropdown
+        // Load periods and categories
+        this.loadSoldPeriods();
         this.loadSoldCategories();
 
         // Reset form
@@ -1473,9 +1475,83 @@ class EbayListingLife {
         modal.style.display = 'block';
     }
 
+    loadSoldPeriods() {
+        const periodSelect = document.getElementById('soldItemPeriod');
+        if (!periodSelect) return;
+
+        // Load sold trends data
+        const soldDataKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+        const soldData = localStorage.getItem(soldDataKey);
+        if (!soldData) {
+            periodSelect.innerHTML = '<option value="">No periods found</option>';
+            periodSelect.disabled = true;
+            return;
+        }
+
+        try {
+            const data = JSON.parse(soldData);
+            const periods = data.periods || [];
+            
+            periodSelect.innerHTML = '<option value="">Select a period...</option>';
+            
+            if (periods.length === 0) {
+                periodSelect.disabled = true;
+                return;
+            }
+
+            periodSelect.disabled = false;
+            
+            periods.forEach(period => {
+                const option = document.createElement('option');
+                option.value = period.id;
+                option.textContent = period.name;
+                periodSelect.appendChild(option);
+            });
+
+            // If there's a current period, select it by default
+            if (data.currentPeriodId) {
+                periodSelect.value = data.currentPeriodId;
+            } else if (periods.length > 0) {
+                periodSelect.value = periods[0].id;
+            }
+        } catch (error) {
+            console.error('Error loading sold periods:', error);
+            periodSelect.innerHTML = '<option value="">Error loading periods</option>';
+            periodSelect.disabled = true;
+        }
+    }
+
+    handleSoldPeriodChange() {
+        const periodSelect = document.getElementById('soldItemPeriod');
+        if (!periodSelect || !periodSelect.value) {
+            const categorySelect = document.getElementById('soldItemCategory');
+            if (categorySelect) {
+                categorySelect.innerHTML = '<option value="">Select a period first</option>';
+                categorySelect.disabled = true;
+            }
+            const subcategorySelect = document.getElementById('soldItemSubcategory');
+            if (subcategorySelect) {
+                subcategorySelect.innerHTML = '<option value="">Select a subcategory...</option>';
+                subcategorySelect.disabled = true;
+            }
+            return;
+        }
+
+        // Load categories for the selected period
+        this.loadSoldCategories();
+    }
+
     loadSoldCategories() {
         const categorySelect = document.getElementById('soldItemCategory');
-        if (!categorySelect) return;
+        const periodSelect = document.getElementById('soldItemPeriod');
+        if (!categorySelect || !periodSelect) return;
+
+        const selectedPeriodId = periodSelect.value;
+        if (!selectedPeriodId) {
+            categorySelect.innerHTML = '<option value="">Select a period first</option>';
+            categorySelect.disabled = true;
+            return;
+        }
 
         // Load sold trends data
         const soldDataKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
@@ -1490,27 +1566,19 @@ class EbayListingLife {
             const data = JSON.parse(soldData);
             const periods = data.periods || [];
             
-            if (periods.length === 0) {
-                categorySelect.innerHTML = '<option value="">No categories found. Create a new category below.</option>';
-                categorySelect.disabled = false;
-                return;
-            }
-
-            // Get current period or first period
-            const currentPeriodId = data.currentPeriodId || (periods[0] ? periods[0].id : null);
-            const currentPeriod = periods.find(p => p.id === currentPeriodId) || periods[0];
+            const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
             
-            if (!currentPeriod) {
-                categorySelect.innerHTML = '<option value="">No period found. Create a new category below.</option>';
-                categorySelect.disabled = false;
+            if (!selectedPeriod) {
+                categorySelect.innerHTML = '<option value="">Period not found</option>';
+                categorySelect.disabled = true;
                 return;
             }
 
             categorySelect.innerHTML = '<option value="">Select a category...</option>';
             categorySelect.disabled = false;
             
-            if (currentPeriod.categories && currentPeriod.categories.length > 0) {
-                currentPeriod.categories.forEach(category => {
+            if (selectedPeriod.categories && selectedPeriod.categories.length > 0) {
+                selectedPeriod.categories.forEach(category => {
                     const option = document.createElement('option');
                     option.value = category.id;
                     option.textContent = category.name;
@@ -1525,7 +1593,14 @@ class EbayListingLife {
             newCategoryOption.textContent = '-- Create New Category --';
             categorySelect.appendChild(newCategoryOption);
 
-            this.currentSoldPeriod = currentPeriod;
+            this.currentSoldPeriod = selectedPeriod;
+            
+            // Reset subcategory dropdown
+            const subcategorySelect = document.getElementById('soldItemSubcategory');
+            if (subcategorySelect) {
+                subcategorySelect.innerHTML = '<option value="">Select a subcategory...</option>';
+                subcategorySelect.disabled = true;
+            }
         } catch (error) {
             console.error('Error loading sold categories:', error);
             categorySelect.innerHTML = '<option value="">Error loading categories. Create a new category below.</option>';
@@ -1698,6 +1773,7 @@ class EbayListingLife {
             return;
         }
 
+        const periodSelect = document.getElementById('soldItemPeriod');
         const categorySelect = document.getElementById('soldItemCategory');
         const subcategorySelect = document.getElementById('soldItemSubcategory');
         const newCategoryName = document.getElementById('newCategoryName');
@@ -1705,8 +1781,9 @@ class EbayListingLife {
         const newSubcategoryName = document.getElementById('newSubcategoryName');
         const priceInput = document.getElementById('soldItemPrice');
 
-        if (!categorySelect || !subcategorySelect || !priceInput) return;
+        if (!periodSelect || !categorySelect || !subcategorySelect || !priceInput) return;
 
+        const periodId = periodSelect.value;
         const categoryId = categorySelect.value;
         const subcategoryId = subcategorySelect.value;
         const isNewCategory = categoryId === '__new__';
@@ -1715,6 +1792,11 @@ class EbayListingLife {
         const newCategoryDescriptionValue = newCategoryDescription ? newCategoryDescription.value.trim() : '';
         const newSubcategoryNameValue = newSubcategoryName ? newSubcategoryName.value.trim() : '';
         const price = parseFloat(priceInput.value);
+
+        if (!periodId) {
+            this.showNotification('Please select a period.', 'warning');
+            return;
+        }
 
         if (!categoryId) {
             this.showNotification('Please select a category or create a new one.', 'warning');
@@ -1770,23 +1852,12 @@ class EbayListingLife {
             }
             
             const periods = data.periods || [];
-            let currentPeriodId = data.currentPeriodId || (periods[0] ? periods[0].id : null);
-            let currentPeriod = periods.find(p => p.id === currentPeriodId);
+            let selectedPeriod = periods.find(p => p.id === periodId);
 
-            // If no period exists, create one
-            if (!currentPeriod) {
-                const timestamp = new Date().toISOString();
-                currentPeriod = {
-                    id: `period-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`,
-                    name: 'Default Period',
-                    description: '',
-                    categories: [],
-                    createdAt: timestamp,
-                    updatedAt: timestamp
-                };
-                periods.push(currentPeriod);
-                currentPeriodId = currentPeriod.id;
-                data.currentPeriodId = currentPeriodId;
+            // If selected period doesn't exist, show error
+            if (!selectedPeriod) {
+                this.showNotification('Selected period not found. Please select a valid period.', 'error');
+                return;
             }
 
             // Create or find the category
@@ -1805,19 +1876,19 @@ class EbayListingLife {
                     updatedAt: timestamp
                 };
                 
-                if (!currentPeriod.categories) {
-                    currentPeriod.categories = [];
+                if (!selectedPeriod.categories) {
+                    selectedPeriod.categories = [];
                 }
-                currentPeriod.categories.push(category);
-                categoryIndex = currentPeriod.categories.length - 1;
+                selectedPeriod.categories.push(category);
+                categoryIndex = selectedPeriod.categories.length - 1;
             } else {
                 // Find existing category
-                categoryIndex = currentPeriod.categories.findIndex(cat => cat.id === categoryId);
+                categoryIndex = selectedPeriod.categories.findIndex(cat => cat.id === categoryId);
                 if (categoryIndex === -1) {
                     this.showNotification('Error: Category not found.', 'error');
                     return;
                 }
-                category = currentPeriod.categories[categoryIndex];
+                category = selectedPeriod.categories[categoryIndex];
             }
             let subcategory = null;
             let subcategoryIndex = -1;
@@ -1896,7 +1967,7 @@ class EbayListingLife {
 
             // Save sold items data first
             data.periods = periods;
-            data.currentPeriodId = currentPeriod.id;
+            // Don't change currentPeriodId - keep it as the currently viewed period
             const soldDataKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
             
             try {
