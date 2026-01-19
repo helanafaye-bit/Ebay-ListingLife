@@ -1478,14 +1478,28 @@ header h1 {
 }
 
 .data-period-controls select,
-.pending-actions-section select,
-.modal-content select {
+.pending-actions-section select {
     position: relative;
     z-index: 1001;
 }
 
-/* Ensure select dropdowns render above everything */
-select {
+/* Modal select dropdowns need higher z-index to appear above modal backdrop */
+.modal-content select {
+    position: relative;
+    z-index: 3000 !important; /* Above modal backdrop (2000) */
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    -webkit-appearance: menulist;
+    -moz-appearance: menulist;
+    appearance: menulist;
+    background-color: var(--input-bg, #ffffff);
+}
+
+/* Ensure select dropdowns render above everything (non-modal selects) */
+.data-period-controls select,
+.pending-actions-section select,
+#categoriesSortSelect,
+#categorySortSelect {
     z-index: 1001;
 }
 
@@ -1892,6 +1906,14 @@ select {
     height: 100%;
     background-color: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(5px);
+    /* Allow clicks to pass through to select dropdowns */
+    pointer-events: auto;
+}
+
+/* Ensure modal content and form elements are interactive */
+.modal-content,
+.modal-content * {
+    pointer-events: auto;
 }
 
 .modal-content {
@@ -1951,6 +1973,53 @@ select {
     /* Force scrollbar visibility on form */
     scrollbar-width: thin !important;
     scrollbar-color: rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.15) !important;
+    /* Ensure form fields are independent and don't affect each other */
+    display: flex;
+    flex-direction: column;
+    gap: 16px; /* Consistent spacing between fields */
+}
+
+/* Make textarea fields independent - they should not flex or shrink */
+#itemModal .modal-content form textarea {
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    align-self: stretch;
+    width: 100%;
+    box-sizing: border-box;
+    /* Ensure resize expands downward, not upward */
+    vertical-align: top;
+    margin-bottom: 0;
+    /* Prevent upward expansion - force downward resize */
+    transform-origin: top;
+}
+
+/* Ensure description and note textareas are completely independent */
+#itemDescription,
+#itemNote {
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    min-height: 60px !important;
+    max-height: none !important;
+    /* Ensure proper vertical alignment so resize works correctly - expands downward */
+    display: block !important;
+    position: relative !important;
+    top: 0 !important;
+    /* Prevent upward expansion - force normal block flow */
+    vertical-align: top !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    /* Ensure textareas don't affect each other's layout */
+    align-self: flex-start !important;
+    width: 100% !important;
+}
+
+/* Ensure labels and inputs don't affect textarea sizing */
+#itemModal .modal-content form label {
+    flex-shrink: 0;
+}
+
+#itemModal .modal-content form input:not([type="checkbox"]):not([type="radio"]) {
+    flex-shrink: 0;
 }
 
 /* Make scrollbar very visible for itemModal form */
@@ -1974,10 +2043,32 @@ select {
     background-color: rgba(0, 0, 0, 0.7) !important;
 }
 
-/* Ensure select dropdowns can render outside modal bounds */
-.modal-content select {
+/* Ensure select dropdown options are clickable */
+.modal-content select option {
+    z-index: 3001 !important;
     position: relative;
-    z-index: 1001;
+    background-color: var(--input-bg, #ffffff);
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+/* Additional fix for select elements in modals - ensure they're interactive */
+.modal-content select:focus,
+.modal-content select:active {
+    z-index: 3000 !important;
+    outline: 2px solid #0064d3;
+    outline-offset: 2px;
+}
+
+/* Fix for modals with select dropdowns - allow overflow */
+#soldItemModal .modal-content,
+#movePendingItemModal .modal-content,
+#soldPeriodModal .modal-content,
+#createPeriodFromPendingModal .modal-content,
+#moveItemModal .modal-content {
+    overflow-y: auto;
+    overflow-x: visible !important;
+    position: relative;
 }
 
 /* For the move item modal specifically, ensure dropdowns are visible */
@@ -2538,7 +2629,7 @@ select {
     font-size: 16px;
     outline: none;
     transition: border-color 0.3s ease;
-    resize: vertical !important; /* Allow users to drag to resize textarea */
+    resize: vertical !important; /* Allow users to drag to resize textarea - expands downward */
     font-family: inherit;
     /* Use overflow-y: auto instead of overflow: auto to preserve resize handle */
     overflow-y: auto;
@@ -2546,9 +2637,15 @@ select {
     scrollbar-width: thin; /* Firefox - use thin to keep resize handle accessible */
     -ms-overflow-style: scrollbar; /* IE and Edge - show scrollbar to preserve resize handle */
     min-height: 60px; /* Minimum height to ensure resize handle is visible */
-    /* Ensure resize handle is accessible */
+    max-height: none !important; /* Allow independent resizing - no max height constraint */
+    /* Ensure resize handle is accessible and textareas are independent */
     position: relative;
     z-index: 10;
+    /* Prevent flex shrinking from affecting textarea sizing */
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* Ensure resize handle area is clickable and visible */

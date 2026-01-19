@@ -1085,13 +1085,41 @@ class PendingItemsManager {
 
     updateMoveModalPeriods() {
         if (!this.movePendingPeriod) return;
+        
+        // Reload periods from storage to ensure we have the latest data
+        const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+        const saved = localStorage.getItem(storageKey);
+        
         this.movePendingPeriod.innerHTML = '<option value="">Select a period...</option>';
-        this.periods.forEach(period => {
-            const option = document.createElement('option');
-            option.value = period.id;
-            option.textContent = period.name;
-            this.movePendingPeriod.appendChild(option);
-        });
+        
+        if (!saved) {
+            this.movePendingPeriod.disabled = true;
+            return;
+        }
+
+        try {
+            const data = JSON.parse(saved);
+            const periods = data.periods || [];
+            
+            if (periods.length === 0) {
+                this.movePendingPeriod.disabled = true;
+                return;
+            }
+
+            this.movePendingPeriod.disabled = false;
+            periods.forEach(period => {
+                const option = document.createElement('option');
+                option.value = period.id;
+                option.textContent = period.name;
+                this.movePendingPeriod.appendChild(option);
+            });
+            
+            // Update this.periods for reference
+            this.periods = periods;
+        } catch (error) {
+            console.error('Error loading periods:', error);
+            this.movePendingPeriod.disabled = true;
+        }
     }
 
     handleMovePeriodChange() {
@@ -1104,20 +1132,44 @@ class PendingItemsManager {
             return;
         }
 
-        const period = this.periods.find(p => p.id === periodId);
-        if (!period) return;
+        // Reload periods from storage to ensure we have the latest data
+        const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+        const saved = localStorage.getItem(storageKey);
+        if (!saved) {
+            this.movePendingCategory.innerHTML = '<option value="">No periods found</option>';
+            this.movePendingCategory.disabled = true;
+            return;
+        }
 
-        this.movePendingCategory.innerHTML = '<option value="">Select a category...</option>';
-        this.movePendingCategory.disabled = false;
+        try {
+            const data = JSON.parse(saved);
+            const periods = data.periods || [];
+            const period = periods.find(p => p.id === periodId);
+            
+            if (!period) {
+                this.movePendingCategory.innerHTML = '<option value="">Period not found</option>';
+                this.movePendingCategory.disabled = true;
+                return;
+            }
 
-        (period.categories || []).forEach(category => {
-            const option = document.createElement('option');
-            option.value = category.id;
-            option.textContent = category.name;
-            this.movePendingCategory.appendChild(option);
-        });
+            this.movePendingCategory.innerHTML = '<option value="">Select a category...</option>';
+            this.movePendingCategory.disabled = false;
 
-        this.handleMoveCategoryChange();
+            if (period.categories && period.categories.length > 0) {
+                period.categories.forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category.id;
+                    option.textContent = category.name;
+                    this.movePendingCategory.appendChild(option);
+                });
+            }
+
+            this.handleMoveCategoryChange();
+        } catch (error) {
+            console.error('Error loading period data:', error);
+            this.movePendingCategory.innerHTML = '<option value="">Error loading categories</option>';
+            this.movePendingCategory.disabled = true;
+        }
     }
 
     handleMoveCategoryChange() {
@@ -1271,6 +1323,27 @@ class PendingItemsManager {
                 return;
             }
 
+            // Check for duplicates across ALL periods and categories before adding
+            const duplicateInfo = this.checkForDuplicateItems(
+                itemsToMove.map(item => ({
+                    label: item.label || '',
+                    price: item.price || 0,
+                    id: item.id || null
+                })),
+                periodId,
+                categoryId,
+                subcategoryId,
+                data
+            );
+            
+            if (duplicateInfo) {
+                this.showNotification(
+                    `Duplicate item detected: "${duplicateInfo.itemName}" (${duplicateInfo.price}) already exists in "${duplicateInfo.periodName}" > "${duplicateInfo.categoryName}" > "${duplicateInfo.subcategoryName}". Please remove the duplicate first.`,
+                    'warning'
+                );
+                return;
+            }
+            
             // Add all items to subcategory
             const timestamp = new Date().toISOString();
             const movedItems = itemsToMove.map(item => ({
@@ -1524,6 +1597,65 @@ class PendingItemsManager {
             notification.style.transition = 'opacity 0.3s';
             setTimeout(() => notification.remove(), 300);
         }, 3000);
+    }
+
+    // Helper function to check for duplicate items across all periods
+    checkForDuplicateItems(items, excludePeriodId, excludeCategoryId, excludeSubcategoryId, data) {
+        const allPeriods = data.periods || [];
+        
+        for (const newItem of items) {
+            const newItemLabel = (newItem.label || '').trim().toLowerCase();
+            const newItemPrice = newItem.price || 0;
+            const newItemId = newItem.id || '';
+            
+            // Check across all periods
+            for (const period of allPeriods) {
+                if (!period.categories) continue;
+                
+                for (const cat of period.categories) {
+                    if (!cat.subcategories) continue;
+                    
+                    for (const subcat of cat.subcategories) {
+                        if (!subcat.items) continue;
+                        
+                        // Skip checking the excluded subcategory (the one we're adding to)
+                        if (period.id === excludePeriodId && 
+                            cat.id === excludeCategoryId && 
+                            subcat.id === excludeSubcategoryId) {
+                            continue;
+                        }
+                        
+                        // Check if this item already exists in any other subcategory
+                        // Match by title/label alone (case-insensitive) OR by ID
+                        const duplicate = subcat.items.find(item => {
+                            const existingLabel = (item.label || '').trim().toLowerCase();
+                            const existingItemId = item.id || '';
+                            
+                            // Match by title/label alone (case-insensitive)
+                            const titleMatch = existingLabel === newItemLabel && newItemLabel !== '';
+                            
+                            // Match by ID if both have IDs
+                            const idMatch = newItemId && existingItemId && 
+                                          (existingItemId.includes(newItemId) || newItemId.includes(existingItemId));
+                            
+                            return titleMatch || idMatch;
+                        });
+                        
+                        if (duplicate) {
+                            return {
+                                itemName: newItem.label || 'Unnamed Item',
+                                price: newItemPrice,
+                                periodName: period.name || 'Unknown Period',
+                                categoryName: cat.name || 'Unknown Category',
+                                subcategoryName: subcat.name || 'Unknown Subcategory'
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        
+        return null; // No duplicates found
     }
 
     generateId(prefix) {

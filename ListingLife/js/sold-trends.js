@@ -598,6 +598,61 @@ class SoldItemsTrends {
         }
         
         if (period && subcategory) {
+            // First check for duplicates WITHIN the current subcategory (same title)
+            const itemLabels = new Map(); // Map to store normalized label -> original label
+            let duplicateLabel = null;
+            for (const item of items) {
+                const originalLabel = (item.label || '').trim();
+                const normalizedLabel = originalLabel.toLowerCase();
+                
+                if (normalizedLabel && itemLabels.has(normalizedLabel)) {
+                    // Found duplicate within the same list - use the original label from the first occurrence
+                    duplicateLabel = itemLabels.get(normalizedLabel) || originalLabel;
+                    break;
+                }
+                if (normalizedLabel) {
+                    itemLabels.set(normalizedLabel, originalLabel);
+                }
+            }
+            
+            if (duplicateLabel) {
+                const override = await this.showConfirm(
+                    `Duplicate item detected: "${duplicateLabel}" appears multiple times in this subcategory. Do you want to save anyway?`,
+                    {
+                        title: 'Duplicate Item',
+                        confirmLabel: 'Override & Save',
+                        cancelLabel: 'Cancel',
+                        variant: 'primary',
+                        focus: 'cancel'
+                    }
+                );
+                
+                if (!override) {
+                    return; // User cancelled
+                }
+                // User chose to override, continue saving
+            }
+            
+            // Then check for duplicates across ALL other periods and categories
+            const duplicateInfo = this.checkForDuplicateItems(items, period.id, category?.id, subcategory.id);
+            if (duplicateInfo) {
+                const override = await this.showConfirm(
+                    `Duplicate item detected: "${duplicateInfo.itemName}" (${duplicateInfo.price}) already exists in "${duplicateInfo.periodName}" > "${duplicateInfo.categoryName}" > "${duplicateInfo.subcategoryName}". Do you want to save anyway?`,
+                    {
+                        title: 'Duplicate Item',
+                        confirmLabel: 'Override & Save',
+                        cancelLabel: 'Cancel',
+                        variant: 'primary',
+                        focus: 'cancel'
+                    }
+                );
+                
+                if (!override) {
+                    return; // User cancelled
+                }
+                // User chose to override, continue saving
+            }
+            
             const normalizedItems = this.normalizeSubcategoryItems(items);
             subcategory.items = normalizedItems;
             subcategory.count = normalizedItems.length;
@@ -759,7 +814,7 @@ class SoldItemsTrends {
         }
     }
 
-    handleMoveItemSubmit(e) {
+    async handleMoveItemSubmit(e) {
         e.preventDefault();
 
         if (!this.currentMovingItem || !this.currentMovingItemRow) {
@@ -849,6 +904,36 @@ class SoldItemsTrends {
             }
         }
 
+        // Check for duplicate before adding to target subcategory
+        const duplicateInfo = this.checkForDuplicateItems(
+            [{
+                label: this.currentMovingItem.label,
+                price: this.currentMovingItem.price,
+                id: this.currentMovingItem.id
+            }],
+            period.id,
+            categoryId,
+            subcategoryId
+        );
+        
+        if (duplicateInfo) {
+            const override = await this.showConfirm(
+                `Duplicate item detected: "${duplicateInfo.itemName}" (${duplicateInfo.price}) already exists in "${duplicateInfo.periodName}" > "${duplicateInfo.categoryName}" > "${duplicateInfo.subcategoryName}". Do you want to move it anyway?`,
+                {
+                    title: 'Duplicate Item',
+                    confirmLabel: 'Override & Move',
+                    cancelLabel: 'Cancel',
+                    variant: 'primary',
+                    focus: 'cancel'
+                }
+            );
+            
+            if (!override) {
+                return; // User cancelled
+            }
+            // User chose to override, continue moving
+        }
+        
         // Add item to target subcategory
         if (!targetSubcategory.items) {
             targetSubcategory.items = [];
@@ -915,6 +1000,65 @@ class SoldItemsTrends {
         } else {
             this.renderTrendingSubcategories();
         }
+    }
+
+    // Helper function to check for duplicate items across all periods
+    checkForDuplicateItems(items, excludePeriodId, excludeCategoryId, excludeSubcategoryId) {
+        const allPeriods = this.periods || [];
+        
+        for (const newItem of items) {
+            const newItemLabel = (newItem.label || '').trim().toLowerCase();
+            const newItemPrice = newItem.price || 0;
+            const newItemId = newItem.id || '';
+            
+            // Check across all periods
+            for (const period of allPeriods) {
+                if (!period.categories) continue;
+                
+                for (const cat of period.categories) {
+                    if (!cat.subcategories) continue;
+                    
+                    for (const subcat of cat.subcategories) {
+                        if (!subcat.items) continue;
+                        
+                        // Skip checking the excluded subcategory (the one we're editing)
+                        if (period.id === excludePeriodId && 
+                            cat.id === excludeCategoryId && 
+                            subcat.id === excludeSubcategoryId) {
+                            continue;
+                        }
+                        
+                        // Check if this item already exists in any other subcategory
+                        // Match by title/label alone (case-insensitive) OR by ID
+                        const duplicate = subcat.items.find(item => {
+                            const existingLabel = (item.label || '').trim().toLowerCase();
+                            const existingItemId = item.id || '';
+                            
+                            // Match by title/label alone (case-insensitive)
+                            const titleMatch = existingLabel === newItemLabel && newItemLabel !== '';
+                            
+                            // Match by ID if both have IDs (for items moved from ListingLife)
+                            const idMatch = newItemId && existingItemId && 
+                                          (existingItemId.includes(newItemId) || newItemId.includes(existingItemId));
+                            
+                            return titleMatch || idMatch;
+                        });
+                        
+                        if (duplicate) {
+                            return {
+                                itemName: newItem.label || 'Unnamed Item',
+                                price: newItemPrice,
+                                periodName: period.name || 'Unknown Period',
+                                categoryName: cat.name || 'Unknown Category',
+                                subcategoryName: subcat.name || 'Unknown Subcategory'
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        
+        return null; // No duplicates found
     }
 
     collectSubcategoryItemsFromEditor() {

@@ -1932,16 +1932,75 @@ class EbayListingLife {
                 subcategory.items = [];
             }
             
-            // Check for duplicate based on item name and price (or original item ID if stored)
-            const existingItem = subcategory.items.find(item => 
-                item.label === this.currentSoldItem.name && 
-                item.price === price &&
-                (!this.currentSoldItem.id || item.id === `solditem-${this.currentSoldItem.id}`)
-            );
+            // Check for duplicate in the current subcategory
+            // Match by title/label alone (case-insensitive) OR by ID
+            const existingItemInSubcategory = subcategory.items.find(item => {
+                const existingLabel = (item.label || '').trim().toLowerCase();
+                const newItemLabel = (this.currentSoldItem.name || '').trim().toLowerCase();
+                const existingItemId = item.id || '';
+                const newItemId = this.currentSoldItem.id;
+                
+                // Match by title/label alone (case-insensitive)
+                const titleMatch = existingLabel === newItemLabel && newItemLabel !== '';
+                
+                // Match by original item ID if stored
+                const idMatch = newItemId && existingItemId && 
+                               (existingItemId.includes(newItemId) || existingItemId === `solditem-${newItemId}`);
+                
+                return titleMatch || idMatch;
+            });
             
-            if (existingItem) {
+            if (existingItemInSubcategory) {
                 this.showNotification('This item has already been added to this subcategory.', 'warning');
                 return;
+            }
+            
+            // Check for duplicates across ALL periods and categories
+            // This prevents adding the same item to different subcategories/periods
+            const itemName = (this.currentSoldItem.name || '').trim().toLowerCase();
+            const itemIdToCheck = this.currentSoldItem.id;
+            
+            for (const period of periods) {
+                if (!period.categories) continue;
+                
+                for (const cat of period.categories) {
+                    if (!cat.subcategories) continue;
+                    
+                    for (const subcat of cat.subcategories) {
+                        if (!subcat.items) continue;
+                        
+                        // Skip checking the current subcategory (already checked above)
+                        if (period.id === periodId && cat.id === (isNewCategory ? category.id : categoryId) && subcat.id === (actualIsNewSubcategory ? subcategory.id : subcategoryId)) {
+                            continue;
+                        }
+                        
+                        // Check if this item already exists in any other subcategory
+                        // Match by title/label alone (case-insensitive) OR by ID
+                        const duplicateInOtherSubcategory = subcat.items.find(item => {
+                            const existingLabel = (item.label || '').trim().toLowerCase();
+                            const existingItemId = item.id;
+                            
+                            // Match by title/label alone (case-insensitive)
+                            const titleMatch = existingLabel === itemName && itemName !== '';
+                            
+                            // Match by original item ID if stored
+                            const idMatch = itemIdToCheck && existingItemId && existingItemId.includes(itemIdToCheck);
+                            
+                            return titleMatch || idMatch;
+                        });
+                        
+                        if (duplicateInOtherSubcategory) {
+                            const periodName = period.name || 'Unknown Period';
+                            const categoryName = cat.name || 'Unknown Category';
+                            const subcategoryName = subcat.name || 'Unknown Subcategory';
+                            this.showNotification(
+                                `This item has already been added to Sold Items Trends in "${periodName}" > "${categoryName}" > "${subcategoryName}".`,
+                                'warning'
+                            );
+                            return;
+                        }
+                    }
+                }
             }
 
             // Add item to subcategory
@@ -1963,7 +2022,7 @@ class EbayListingLife {
 
             // Update category
             category.updatedAt = timestamp;
-            currentPeriod.updatedAt = timestamp;
+            selectedPeriod.updatedAt = timestamp;
 
             // Save sold items data first
             data.periods = periods;
@@ -2242,8 +2301,57 @@ class EbayListingLife {
     }
 
     isItemEnded(item) {
+        // Check if item is sold (has soldDate) - sold items should never appear in active categories
+        if (item.soldDate) {
+            return true;
+        }
         // Check if item is manually ended or has automatically ended (days left <= 0)
         return item.manuallyEnded || this.calculateDaysLeft(item) <= 0;
+    }
+
+    // Check if an item title exists in SoldItemsTrends across all periods
+    checkItemInSoldTrends(itemName) {
+        if (!itemName) return false;
+        
+        try {
+            const storageKey = window.storeManager ? window.storeManager.getStoreDataKey('SoldItemsTrends') : 'SoldItemsTrends';
+            const soldData = localStorage.getItem(storageKey);
+            
+            if (!soldData) return false;
+            
+            const data = JSON.parse(soldData);
+            const periods = data.periods || [];
+            const normalizedItemName = (itemName || '').trim().toLowerCase();
+            
+            if (!normalizedItemName) return false;
+            
+            // Check across all periods, categories, and subcategories
+            for (const period of periods) {
+                if (!period.categories) continue;
+                
+                for (const cat of period.categories) {
+                    if (!cat.subcategories) continue;
+                    
+                    for (const subcat of cat.subcategories) {
+                        if (!subcat.items) continue;
+                        
+                        // Check if any item in this subcategory has the same title
+                        const found = subcat.items.find(item => {
+                            const itemLabel = (item.label || '').trim().toLowerCase();
+                            return itemLabel === normalizedItemName;
+                        });
+                        
+                        if (found) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error checking item in SoldItemsTrends:', error);
+        }
+        
+        return false;
     }
 
     // Search Functionality
@@ -2596,10 +2704,18 @@ class EbayListingLife {
             const urgencyClass = this.getUrgencyClass(daysLeft);
             const daysText = daysLeft <= 0 ? 'Ended' : `${daysLeft} days left`;
             
+            // Check if this item title exists in SoldItemsTrends
+            const detectedInSoldTrends = this.checkItemInSoldTrends(item.name);
+            const soldTrendsWarning = detectedInSoldTrends ? 
+                `<div class="sold-trends-detection" style="font-size: 11px; color: #ff9800; font-weight: 500; margin-bottom: 4px; padding: 2px 6px; background: rgba(255, 152, 0, 0.1); border-radius: 4px; display: inline-block;">
+                    ⚠️ Detected in SOLDITEMSTRENDS
+                </div>` : '';
+            
             html += `
                 <div class="item item-clickable" data-item-id="${item.id}">
                     ${photoHtml}
                     <div class="item-info">
+                        ${soldTrendsWarning}
                         <div class="item-name">${item.name}</div>
                         <div class="item-date">Added: ${item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown'}</div>
                         ${item.note ? `<div class="item-notes">${item.note.substring(0, 50)}${item.note.length > 50 ? '...' : ''}</div>` : ''}
