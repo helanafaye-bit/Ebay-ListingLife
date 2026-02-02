@@ -26,6 +26,7 @@ class ListingLifeSettingsPage {
         this.awsRegion = document.getElementById('awsRegion');
         this.saveStorageBtn = document.getElementById('saveStorageBtn');
         this.testStorageBtn = document.getElementById('testStorageBtn');
+        this.importFromDropboxBtn = document.getElementById('importFromDropboxBtn');
         this.storageStatus = document.getElementById('storageStatus');
         
         this.storageOptions = {
@@ -97,6 +98,10 @@ class ListingLifeSettingsPage {
         if (this.testStorageBtn) {
             this.testStorageBtn.addEventListener('click', () => this.testStorageConnection());
         }
+        
+        if (this.importFromDropboxBtn) {
+            this.importFromDropboxBtn.addEventListener('click', () => this.importFromDropbox());
+        }
     }
     
     handleStorageModeChange() {
@@ -110,6 +115,11 @@ class ListingLifeSettingsPage {
         // Show selected option
         if (this.storageOptions[mode]) {
             this.storageOptions[mode].style.display = 'block';
+        }
+        
+        // Show import button only for Dropbox mode
+        if (this.importFromDropboxBtn) {
+            this.importFromDropboxBtn.style.display = (mode === 'dropbox') ? 'inline-block' : 'none';
         }
     }
     
@@ -194,6 +204,11 @@ class ListingLifeSettingsPage {
         if (config.storage_mode) {
             this.storageModeSelect.value = config.storage_mode;
             this.handleStorageModeChange();
+            
+            // Show import button if Dropbox is configured
+            if (this.importFromDropboxBtn && config.storage_mode === 'dropbox') {
+                this.importFromDropboxBtn.style.display = 'inline-block';
+            }
         }
         
         if (config.local_storage_path) {
@@ -362,6 +377,59 @@ class ListingLifeSettingsPage {
         }
     }
     
+    async importFromDropbox() {
+        if (!window.storageWrapper) {
+            this.showStorageStatus('Storage wrapper not available.', 'error');
+            return;
+        }
+
+        if (!window.storageWrapper.useBackend || !window.storageWrapper.backendAvailable) {
+            this.showStorageStatus('Backend not available. Please ensure the storage server is running and connected to Dropbox.', 'error');
+            return;
+        }
+
+        // Confirm with user
+        const confirmed = confirm(
+            'This will import all data from Dropbox and overwrite your current localStorage data.\n\n' +
+            'This is useful when setting up a new device or if data is out of sync.\n\n' +
+            'After importing, the page will reload to show the imported data.\n\n' +
+            'Continue?'
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        this.showStorageStatus('Importing data from Dropbox...', 'info');
+        this.importFromDropboxBtn.disabled = true;
+
+        try {
+            const result = await window.storageWrapper.forceImportFromBackend();
+            
+            if (result.imported > 0) {
+                this.showStorageStatus(
+                    `Successfully imported ${result.imported} data file(s) from Dropbox. Page will reload in 2 seconds...`,
+                    'success'
+                );
+                
+                // Reload page after a short delay to show imported data
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                this.showStorageStatus(
+                    'No data found in Dropbox, or all imports failed. Check console for details.',
+                    'warning'
+                );
+                this.importFromDropboxBtn.disabled = false;
+            }
+        } catch (error) {
+            console.error('Import error:', error);
+            this.showStorageStatus('Import failed: ' + error.message, 'error');
+            this.importFromDropboxBtn.disabled = false;
+        }
+    }
+
     showStorageStatus(message, type = 'info') {
         if (!this.storageStatus) return;
         this.storageStatus.textContent = message;

@@ -491,6 +491,16 @@ class EbayListingLife {
                     console.log('Item clicked (not button) for item:', itemId);
                     e.preventDefault();
                     e.stopPropagation();
+                    
+                    // If it's a search result item, navigate to its category instead of opening view modal
+                    if (itemElement.classList.contains('search-result-item')) {
+                        const categoryId = itemElement.getAttribute('data-category-id');
+                        if (categoryId) {
+                            this.showCategoryItems(categoryId);
+                            return;
+                        }
+                    }
+                    
                     this.openViewModal(itemId);
                 }
             }
@@ -2431,7 +2441,7 @@ class EbayListingLife {
             const category = this.categories.find(cat => cat.id === item.categoryId);
             
             html += `
-                <div class="item item-clickable" data-item-id="${item.id}">
+                <div class="item item-clickable search-result-item" data-item-id="${item.id}" data-category-id="${item.categoryId || ''}">
                     <div class="item-info">
                         <div class="item-name">${this.highlightSearchTerm(item.name, searchTerm)}</div>
                         <div class="item-date">Category: ${category ? category.name : 'Unknown'} | Added: ${item.dateAdded ? this.formatDate(item.dateAdded) : 'Unknown'}</div>
@@ -2439,6 +2449,7 @@ class EbayListingLife {
                     </div>
                     <div class="item-actions">
                         <button class="btn btn-small btn-primary edit-btn" data-item-id="${item.id}">Edit</button>
+                        <button class="btn btn-small btn-success sold-btn" data-item-id="${item.id}">Sold</button>
                         <button class="btn btn-small btn-warning end-btn" data-item-id="${item.id}">End</button>
                         <button class="btn btn-small btn-danger delete-btn" data-item-id="${item.id}">Delete</button>
                     </div>
@@ -2589,7 +2600,6 @@ class EbayListingLife {
                         <select id="categoriesSortSelect" style="padding: 8px 12px; border-radius: 8px; border: 2px solid #e1e8ed; font-size: 14px;">
                             <option value="default" ${sortOrder === 'default' ? 'selected' : ''}>Default</option>
                             <option value="a-z" ${sortOrder === 'a-z' ? 'selected' : ''}>A-Z</option>
-                            <option value="a-z-by-title" ${sortOrder === 'a-z-by-title' ? 'selected' : ''}>A-Z by Category Title</option>
                         </select>
                     </div>
                 </div>
@@ -2608,7 +2618,7 @@ class EbayListingLife {
 
         // Sort categories based on selected option
         let sortedCategories = [...this.categories];
-        if (sortOrder === 'a-z' || sortOrder === 'a-z-by-title') {
+        if (sortOrder === 'a-z') {
             // Sort alphabetically by category name (case-insensitive)
             sortedCategories.sort((a, b) => {
                 const nameA = (a.name || '').toLowerCase();
@@ -2627,7 +2637,6 @@ class EbayListingLife {
                     <select id="categoriesSortSelect" style="padding: 8px 12px; border-radius: 8px; border: 2px solid #e1e8ed; font-size: 14px;">
                         <option value="default" ${sortOrder === 'default' ? 'selected' : ''}>Default</option>
                         <option value="a-z" ${sortOrder === 'a-z' ? 'selected' : ''}>A-Z</option>
-                        <option value="a-z-by-title" ${sortOrder === 'a-z-by-title' ? 'selected' : ''}>A-Z by Category Title</option>
                     </select>
                 </div>
             </div>
@@ -2930,21 +2939,81 @@ class EbayListingLife {
             return;
         }
 
+        // Get dismissed items from sessionStorage
+        const dismissedItemsKey = 'dismissedRecentItems';
+        let dismissedItems = new Set();
+        try {
+            const dismissed = sessionStorage.getItem(dismissedItemsKey);
+            if (dismissed) {
+                dismissedItems = new Set(JSON.parse(dismissed));
+            }
+        } catch (e) {
+            console.warn('Error loading dismissed items:', e);
+        }
+
         let html = '';
         recentItems.forEach(item => {
+            // Skip if item is dismissed
+            if (dismissedItems.has(item.id)) {
+                return;
+            }
+
             const category = this.categories.find(cat => cat.id === item.categoryId);
             const daysSinceAdded = Math.floor((new Date() - new Date(item.dateAdded)) / (1000 * 60 * 60 * 24));
             
             html += `
-                <div class="urgent-item" onclick="app.showCategoryItems('${item.categoryId}')">
-                    <div class="item-name">${item.name}</div>
-                    <div class="item-date">${category ? category.name : 'Unknown'} | ${this.formatDate(item.dateAdded)}</div>
-                    <span class="days-remaining">${daysSinceAdded} days ago</span>
+                <div class="urgent-item recent-item-notification" data-item-id="${item.id}">
+                    <button class="recent-item-close" onclick="event.stopPropagation(); app.dismissRecentItem('${item.id}')" aria-label="Close notification" title="Close">×</button>
+                    <div class="recent-item-content" onclick="app.showCategoryItems('${item.categoryId}')">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-date">${category ? category.name : 'Unknown'} | ${this.formatDate(item.dateAdded)}</div>
+                        <span class="days-remaining">${daysSinceAdded} days ago</span>
+                    </div>
                 </div>
             `;
         });
 
         container.innerHTML = html;
+    }
+
+    dismissRecentItem(itemId) {
+        // Get current dismissed items
+        const dismissedItemsKey = 'dismissedRecentItems';
+        let dismissedItems = new Set();
+        try {
+            const dismissed = sessionStorage.getItem(dismissedItemsKey);
+            if (dismissed) {
+                dismissedItems = new Set(JSON.parse(dismissed));
+            }
+        } catch (e) {
+            console.warn('Error loading dismissed items:', e);
+        }
+
+        // Add item to dismissed set
+        dismissedItems.add(itemId);
+
+        // Save to sessionStorage
+        try {
+            sessionStorage.setItem(dismissedItemsKey, JSON.stringify(Array.from(dismissedItems)));
+        } catch (e) {
+            console.warn('Error saving dismissed items:', e);
+        }
+
+        // Remove the item from DOM
+        const itemElement = document.querySelector(`.recent-item-notification[data-item-id="${itemId}"]`);
+        if (itemElement) {
+            itemElement.style.transition = 'opacity 0.3s, transform 0.3s';
+            itemElement.style.opacity = '0';
+            itemElement.style.transform = 'translateX(-20px)';
+            setTimeout(() => {
+                itemElement.remove();
+                // If no items left, show empty state
+                const container = document.getElementById('urgentItemsList');
+                if (container && container.querySelectorAll('.recent-item-notification').length === 0) {
+                    container.innerHTML = '<p style="color: #6c757d; font-style: italic;">No recent items</p>';
+                }
+            }, 300);
+        }
     }
 
     updateEndingSoonItems(container) {

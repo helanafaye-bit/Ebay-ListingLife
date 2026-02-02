@@ -402,6 +402,128 @@ class StorageWrapper {
         console.log('   This is useful if you need to correct mistakes or restore from localStorage');
         return this.syncToBackend(true);
     }
+
+    /**
+     * Force import all data from Dropbox backend, overriding localStorage
+     * Use this on a new device to sync data from Dropbox
+     * 
+     * Example: storageWrapper.forceImportFromBackend()
+     */
+    async forceImportFromBackend() {
+        if (!this.useBackend || !this.backendAvailable) {
+            throw new Error('Backend is not available. Please ensure the storage server is running and connected to Dropbox.');
+        }
+
+        console.log('🔄 Force importing all data from Dropbox backend...');
+        console.log('   This will overwrite localStorage with data from Dropbox');
+
+        // First, try to get ListingLifeStores to know what stores exist
+        let stores = [];
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            const storesResponse = await fetch(`${this.backendUrl}/get`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: 'ListingLifeStores' }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (storesResponse.ok) {
+                const storesResult = await storesResponse.json();
+                if (storesResult.value) {
+                    const storesData = typeof storesResult.value === 'string' ? JSON.parse(storesResult.value) : storesResult.value;
+                    stores = storesData.stores || [];
+                }
+            }
+        } catch (e) {
+            if (e.name !== 'AbortError') {
+                console.warn('Could not load stores list, will try default keys:', e);
+            }
+        }
+
+        // List of keys to import
+        const keysToImport = [
+            'ListingLifeStores',
+            'ListingLifeCurrentStore',
+            'ListingLifeStorageConfig',
+            'ListingLifeSettings',
+            'EbayListingLife',
+            'SoldItemsTrends',
+            'PendingItems'
+        ];
+
+        // Add store-specific keys for each store
+        if (stores.length > 0 && window.storeManager) {
+            stores.forEach(store => {
+                try {
+                    const storeKey = window.storeManager.getStoreDataKey('EbayListingLife', store.id);
+                    keysToImport.push(storeKey);
+                    
+                    // Also try store-specific keys for other data types
+                    const soldKey = window.storeManager.getStoreDataKey('SoldItemsTrends', store.id);
+                    const pendingKey = window.storeManager.getStoreDataKey('PendingItems', store.id);
+                    keysToImport.push(soldKey, pendingKey);
+                } catch (e) {
+                    console.warn('Error generating store key:', e);
+                }
+            });
+        } else if (window.storeManager) {
+            // Fallback: try to get stores from localStorage if backend failed
+            try {
+                const localStores = window.storeManager.stores || [];
+                localStores.forEach(store => {
+                    const storeKey = window.storeManager.getStoreDataKey('EbayListingLife', store.id);
+                    keysToImport.push(storeKey);
+                });
+            } catch (e) {
+                console.warn('Error getting store keys from localStorage:', e);
+            }
+        }
+
+        let importedCount = 0;
+        let failedCount = 0;
+
+        for (const key of keysToImport) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const response = await fetch(`${this.backendUrl}/get`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ key }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.value) {
+                        // Import the value into localStorage
+                        const value = typeof result.value === 'string' ? result.value : JSON.stringify(result.value);
+                        this._originalSetItem(key, value);
+                        importedCount++;
+                        console.log(`   ✓ Imported: ${key}`);
+                    }
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.warn(`   ⚠ Failed to import ${key}:`, error.message);
+                    failedCount++;
+                }
+            }
+        }
+
+        console.log(`✅ Import complete: ${importedCount} keys imported, ${failedCount} failed`);
+        return { imported: importedCount, failed: failedCount };
+    }
 }
 
 // Save original Storage methods BEFORE creating wrapper (to avoid recursion)

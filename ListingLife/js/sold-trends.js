@@ -233,7 +233,14 @@ class SoldItemsTrends {
         }
 
         if (this.saveSubcategoryItemsBtn) {
-            this.saveSubcategoryItemsBtn.addEventListener('click', () => this.handleSubcategoryItemsSave());
+            this.saveSubcategoryItemsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.handleSubcategoryItemsSave().catch(error => {
+                    console.error('Error in handleSubcategoryItemsSave:', error);
+                    this.showNotification('Error saving items: ' + error.message, 'error');
+                });
+            });
         }
 
         if (this.moveItemForm) {
@@ -467,7 +474,9 @@ class SoldItemsTrends {
         }
 
         if (this.subcategoryItemsCountLabel) {
-            const label = items.length === 1 ? '1 item' : `${items.length} items`;
+            const normalizedItems = this.normalizeSubcategoryItems(items);
+            const totalQuantity = this.calculateTotalQuantity(normalizedItems);
+            const label = totalQuantity === 1 ? '1 item' : `${totalQuantity} items`;
             this.subcategoryItemsCountLabel.textContent = label;
         }
 
@@ -499,6 +508,9 @@ class SoldItemsTrends {
         const rawPrice = item.price;
         const hasPrice = rawPrice !== '' && rawPrice !== null && rawPrice !== undefined && Number.isFinite(Number(rawPrice)) && Number(rawPrice) >= 0;
         const priceValue = hasPrice ? Number(rawPrice) : '';
+        const rawQuantity = item.quantity;
+        const hasQuantity = rawQuantity !== '' && rawQuantity !== null && rawQuantity !== undefined && Number.isFinite(Number(rawQuantity)) && Number(rawQuantity) > 0;
+        const quantityValue = hasQuantity ? Number(rawQuantity) : 1; // Default to 1 if not specified
         const photoUrl = item.photo && String(item.photo).trim() ? String(item.photo).trim() : null;
         
         // Always include both photo and placeholder divs for dynamic switching
@@ -535,11 +547,15 @@ class SoldItemsTrends {
             </div>
             <div class="editor-field">
                 <label>Item Label (optional)</label>
-                <input type="text" class="subcategory-item-name" placeholder="e.g., Single plate" value="${safeLabel}">
+                <textarea class="subcategory-item-name" placeholder="e.g., Single plate" rows="1" oninput="this.style.height='auto'; this.style.height=this.scrollHeight+'px';">${safeLabel}</textarea>
             </div>
             <div class="editor-field subcategory-item-price-field">
                 <label>Item Price</label>
                 <input type="number" class="subcategory-item-price" min="0" step="0.01" placeholder="e.g., 12.50" value="${priceValue}">
+            </div>
+            <div class="editor-field subcategory-item-quantity-field">
+                <label>Quantity (optional)</label>
+                <input type="number" class="subcategory-item-quantity" min="1" step="1" placeholder="1" value="${quantityValue}">
             </div>
             ${imageUrlInputHtml}
             <div class="subcategory-row-actions">
@@ -549,6 +565,14 @@ class SoldItemsTrends {
         `;
 
         this.subcategoryItemsList.appendChild(row);
+        
+        // Auto-resize textarea on load
+        const nameTextarea = row.querySelector('.subcategory-item-name');
+        if (nameTextarea) {
+            nameTextarea.style.height = 'auto';
+            nameTextarea.style.height = nameTextarea.scrollHeight + 'px';
+        }
+        
         this.updateSubcategoryItemsCountLabel();
     }
 
@@ -599,12 +623,14 @@ class SoldItemsTrends {
         
         if (period && subcategory) {
             // First check for duplicates WITHIN the current subcategory (same title)
+            // This helps when moving items from pending - you can't see if category already has it
             const itemLabels = new Map(); // Map to store normalized label -> original label
             let duplicateLabel = null;
             for (const item of items) {
                 const originalLabel = (item.label || '').trim();
                 const normalizedLabel = originalLabel.toLowerCase();
                 
+                // Only check for duplicates if label is not empty
                 if (normalizedLabel && itemLabels.has(normalizedLabel)) {
                     // Found duplicate within the same list - use the original label from the first occurrence
                     duplicateLabel = itemLabels.get(normalizedLabel) || originalLabel;
@@ -655,7 +681,7 @@ class SoldItemsTrends {
             
             const normalizedItems = this.normalizeSubcategoryItems(items);
             subcategory.items = normalizedItems;
-            subcategory.count = normalizedItems.length;
+            subcategory.count = this.calculateTotalQuantity(normalizedItems);
             subcategory.updatedAt = new Date().toISOString();
             
             // Update the category's updatedAt timestamp
@@ -691,9 +717,11 @@ class SoldItemsTrends {
         // Get the current item data from the row
         const nameInput = itemRow.querySelector('.subcategory-item-name');
         const priceInput = itemRow.querySelector('.subcategory-item-price');
+        const quantityInput = itemRow.querySelector('.subcategory-item-quantity');
         const photoImg = itemRow.querySelector('.subcategory-item-photo img');
         const itemLabel = nameInput ? nameInput.value.trim() : '';
         const itemPrice = priceInput ? parseFloat(priceInput.value) : 0;
+        const itemQuantity = quantityInput ? parseInt(quantityInput.value, 10) : 1;
         const itemPhoto = photoImg && photoImg.src ? photoImg.src : (itemRow.dataset.itemPhoto || null);
 
         // Store references
@@ -701,6 +729,7 @@ class SoldItemsTrends {
             id: itemId,
             label: itemLabel,
             price: itemPrice,
+            quantity: itemQuantity,
             photo: itemPhoto,
             createdAt: itemRow.dataset.createdAt || new Date().toISOString()
         };
@@ -876,26 +905,26 @@ class SoldItemsTrends {
             const itemIndex = actualCurrentSubcategory.items.findIndex(item => item.id === this.currentMovingItem.id);
             if (itemIndex !== -1) {
                 actualCurrentSubcategory.items.splice(itemIndex, 1);
-                actualCurrentSubcategory.count = actualCurrentSubcategory.items.length;
+                const normalizedItems = this.normalizeSubcategoryItems(actualCurrentSubcategory.items);
+                actualCurrentSubcategory.count = this.calculateTotalQuantity(normalizedItems);
                 const timestamp = new Date().toISOString();
                 actualCurrentSubcategory.updatedAt = timestamp;
                 actualCurrentCategory.updatedAt = timestamp;
                 
                 // Update the subcategory row's dataset.items to reflect the removal
                 if (this.currentSubcategoryRow) {
-                    const normalizedItems = this.normalizeSubcategoryItems(actualCurrentSubcategory.items);
                     this.currentSubcategoryRow.dataset.items = JSON.stringify(normalizedItems);
                     
                     // Update the pill count
                     const pill = this.currentSubcategoryRow.querySelector('.subcategory-items-pill');
                     if (pill) {
-                        pill.textContent = normalizedItems.length;
+                        pill.textContent = actualCurrentSubcategory.count;
                     }
                     
                     // Update count input
                     const countInput = this.currentSubcategoryRow.querySelector('.subcategory-count-input');
                     if (countInput) {
-                        countInput.value = normalizedItems.length;
+                        countInput.value = actualCurrentSubcategory.count;
                     }
                 }
             } else {
@@ -943,6 +972,7 @@ class SoldItemsTrends {
             id: this.currentMovingItem.id,
             label: this.currentMovingItem.label,
             price: this.currentMovingItem.price,
+            quantity: this.currentMovingItem.quantity || 1, // Preserve quantity, default to 1
             photo: this.currentMovingItem.photo || null, // Preserve photo
             createdAt: this.currentMovingItem.createdAt,
             updatedAt: timestamp
@@ -952,7 +982,7 @@ class SoldItemsTrends {
         // Normalize items to ensure consistency
         const normalizedTargetItems = this.normalizeSubcategoryItems(targetSubcategory.items);
         targetSubcategory.items = normalizedTargetItems;
-        targetSubcategory.count = normalizedTargetItems.length;
+        targetSubcategory.count = this.calculateTotalQuantity(normalizedTargetItems);
         targetSubcategory.updatedAt = timestamp;
         targetCategory.updatedAt = timestamp;
         period.updatedAt = timestamp;
@@ -1070,6 +1100,7 @@ class SoldItemsTrends {
         for (const row of itemRows) {
             const labelInput = row.querySelector('.subcategory-item-name');
             const priceInput = row.querySelector('.subcategory-item-price');
+            const quantityInput = row.querySelector('.subcategory-item-quantity');
             if (!priceInput) {
                 continue;
             }
@@ -1084,6 +1115,18 @@ class SoldItemsTrends {
             if (!Number.isFinite(priceValue) || priceValue < 0) {
                 this.showNotification('Please enter a valid price (0 or greater) for each item.', 'warning');
                 return null;
+            }
+
+            const quantityRaw = quantityInput ? quantityInput.value.trim() : '1';
+            let quantityValue = 1; // Default to 1
+            if (quantityRaw !== '') {
+                const parsed = Number(quantityRaw);
+                if (Number.isFinite(parsed) && parsed >= 1) {
+                    quantityValue = parsed;
+                } else {
+                    this.showNotification(`Please enter a valid quantity (1 or greater) for item "${label || 'unnamed item'}".`, 'warning');
+                    return null;
+                }
             }
 
             const label = labelInput ? labelInput.value.trim() : '';
@@ -1108,6 +1151,7 @@ class SoldItemsTrends {
                 id: itemId,
                 label,
                 price: priceValue,
+                quantity: quantityValue,
                 photo: photo,
                 createdAt,
                 updatedAt: timestamp
@@ -1122,16 +1166,19 @@ class SoldItemsTrends {
         const normalizedItems = this.normalizeSubcategoryItems(items);
         row.dataset.items = JSON.stringify(normalizedItems);
 
+        const totalQuantity = this.calculateTotalQuantity(normalizedItems);
+        const itemsCount = normalizedItems.length;
+
         const pill = row.querySelector('.subcategory-items-pill');
         if (pill) {
-            pill.textContent = normalizedItems.length;
+            pill.textContent = totalQuantity;
         }
 
         const nameInput = row.querySelector('.subcategory-name-input');
         const manageBtn = row.querySelector('.subcategory-manage-btn');
         if (manageBtn) {
             const name = nameInput ? nameInput.value.trim() : '';
-            const itemText = normalizedItems.length === 1 ? '1 item' : `${normalizedItems.length} items`;
+            const itemText = totalQuantity === 1 ? '1 item' : `${totalQuantity} items`;
             manageBtn.setAttribute('aria-label', name ? `Manage items for ${name} (${itemText})` : `Manage items (${itemText})`);
         }
 
@@ -1139,11 +1186,10 @@ class SoldItemsTrends {
         const priceInput = row.querySelector('.subcategory-price-input');
         const countHint = row.querySelector('.subcategory-count-hint');
         const priceHint = row.querySelector('.subcategory-price-hint');
-        const itemsLength = normalizedItems.length;
 
         if (countInput) {
-            countInput.value = itemsLength;
-            if (itemsLength) {
+            countInput.value = totalQuantity;
+            if (itemsCount) {
                 countInput.setAttribute('readonly', 'readonly');
             } else {
                 countInput.removeAttribute('readonly');
@@ -1151,7 +1197,7 @@ class SoldItemsTrends {
         }
 
         if (priceInput) {
-            if (itemsLength) {
+            if (itemsCount) {
                 priceInput.value = '';
                 priceInput.setAttribute('disabled', 'disabled');
             } else {
@@ -1160,11 +1206,11 @@ class SoldItemsTrends {
         }
 
         if (countHint) {
-            countHint.classList.toggle('visible', Boolean(itemsLength));
+            countHint.classList.toggle('visible', Boolean(itemsCount));
         }
 
         if (priceHint) {
-            priceHint.classList.toggle('visible', Boolean(itemsLength));
+            priceHint.classList.toggle('visible', Boolean(itemsCount));
         }
     }
 
@@ -1201,7 +1247,7 @@ class SoldItemsTrends {
             const priceValue = priceInputEl ? parseFloat(priceInputEl.value) : NaN;
             const items = this.normalizeSubcategoryItems(row.dataset.items);
             const hasItems = items.length > 0;
-            const resolvedCount = hasItems ? items.length : (Number.isFinite(count) && count >= 0 ? count : 0);
+            const resolvedCount = hasItems ? this.calculateTotalQuantity(items) : (Number.isFinite(count) && count >= 0 ? count : 0);
             const price = hasItems ? null : (Number.isFinite(priceValue) && priceValue >= 0 ? priceValue : null);
 
             subcategories.push({
@@ -1336,11 +1382,16 @@ class SoldItemsTrends {
             const totals = category.subcategories.reduce((acc, sub) => {
                 const items = this.normalizeSubcategoryItems(sub.items);
                 const hasItems = items.length > 0;
-                const count = hasItems ? items.length : sub.count ?? 0;
+                const count = hasItems ? this.calculateTotalQuantity(items) : sub.count ?? 0;
                 acc.totalSold += count;
 
                 if (hasItems) {
-                    const itemsTotal = items.reduce((sum, item) => sum + (Number.isFinite(item.price) ? item.price : 0), 0);
+                    const itemsTotal = items.reduce((sum, item) => {
+                        const price = Number.isFinite(item.price) ? item.price : 0;
+                        const quantity = item.quantity !== undefined && item.quantity !== null ? Number(item.quantity) : 1;
+                        const itemTotal = price * (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+                        return sum + itemTotal;
+                    }, 0);
                     acc.totalMade += itemsTotal;
                     acc.hasPrice = true;
                 } else if (Number.isFinite(sub.price)) {
@@ -1357,14 +1408,19 @@ class SoldItemsTrends {
                         ${category.subcategories.map(sub => {
                             const items = this.normalizeSubcategoryItems(sub.items);
                             const hasItems = items.length > 0;
-                            const itemCount = hasItems ? items.length : sub.count ?? 0;
+                            const itemCount = hasItems ? this.calculateTotalQuantity(items) : sub.count ?? 0;
                             const countLabel = hasItems
                                 ? `${this.formatNumber(itemCount)} ${itemCount === 1 ? 'item' : 'items'}`
                                 : this.formatNumber(itemCount);
                             let priceLabel = '';
 
                             if (hasItems) {
-                                const itemsTotal = items.reduce((sum, item) => sum + (Number.isFinite(item.price) ? item.price : 0), 0);
+                                const itemsTotal = items.reduce((sum, item) => {
+                                    const price = Number.isFinite(item.price) ? item.price : 0;
+                                    const quantity = item.quantity !== undefined && item.quantity !== null ? Number(item.quantity) : 1;
+                                    const itemTotal = price * (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+                                    return sum + itemTotal;
+                                }, 0);
                                 priceLabel = `Total <span class="sold-price-value">${this.formatCurrency(itemsTotal)}</span>`;
                             } else if (Number.isFinite(sub.price)) {
                                 priceLabel = `× <span class="sold-price-value">${this.formatCurrency(sub.price)}</span>`;
@@ -1529,7 +1585,7 @@ class SoldItemsTrends {
                 category.subcategories.forEach(subcategory => {
                     const items = this.normalizeSubcategoryItems(subcategory.items);
                     const hasItems = items.length > 0;
-                    const soldCount = hasItems ? items.length : (subcategory.count ?? 0);
+                    const soldCount = hasItems ? this.calculateTotalQuantity(items) : (subcategory.count ?? 0);
                     
                     if (soldCount > 0) {
                         subcategoryCounts.push({
@@ -1623,11 +1679,19 @@ class SoldItemsTrends {
         }
 
         if (this.confirmCancelBtn) {
-            this.confirmCancelBtn.addEventListener('click', () => this.resolveConfirm(false));
+            this.confirmCancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.resolveConfirm(false);
+            });
         }
 
         if (this.confirmAcceptBtn) {
-            this.confirmAcceptBtn.addEventListener('click', () => this.resolveConfirm(true));
+            this.confirmAcceptBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.resolveConfirm(true);
+            });
         }
 
         if (this.confirmModal) {
@@ -1730,6 +1794,9 @@ class SoldItemsTrends {
     }
 
     resolveConfirm(result) {
+        const resolver = this.activeConfirmResolver;
+        this.activeConfirmResolver = null;
+        
         if (this.confirmModal) {
             this.confirmModal.style.display = 'none';
             this.confirmModal.setAttribute('aria-hidden', 'true');
@@ -1742,8 +1809,7 @@ class SoldItemsTrends {
             }
         }
 
-        const resolver = this.activeConfirmResolver;
-        this.activeConfirmResolver = null;
+        // Resolve the promise with the result
         if (typeof resolver === 'function') {
             resolver(Boolean(result));
         }
@@ -2175,10 +2241,31 @@ class SoldItemsTrends {
             .filter(Boolean);
     }
 
+    calculateTotalQuantity(items) {
+        if (!Array.isArray(items) || items.length === 0) return 0;
+        return items.reduce((total, item) => {
+            const quantity = item.quantity !== undefined && item.quantity !== null ? Number(item.quantity) : 1;
+            return total + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+        }, 0);
+    }
+
     normalizeSubcategoryItem(item, fallbackTimestamp) {
         if (!item || typeof item !== 'object') return null;
         const price = Number(item.price);
         if (!Number.isFinite(price) || price < 0) return null;
+        const quantity = item.quantity !== undefined && item.quantity !== null ? Number(item.quantity) : 1;
+        if (!Number.isFinite(quantity) || quantity < 1) {
+            // If quantity is invalid, default to 1
+            return {
+                id: item.id || this.generateId('solditem'),
+                label: item.label && String(item.label).trim() ? String(item.label).trim() : '',
+                price,
+                quantity: 1,
+                photo: item.photo && String(item.photo).trim() ? String(item.photo).trim() : null,
+                createdAt: item.createdAt || fallbackTimestamp,
+                updatedAt: item.updatedAt || item.createdAt || fallbackTimestamp
+            };
+        }
         const label = item.label && String(item.label).trim() ? String(item.label).trim() : '';
         const photo = item.photo && String(item.photo).trim() ? String(item.photo).trim() : null;
         const createdAt = item.createdAt || fallbackTimestamp;
@@ -2188,6 +2275,7 @@ class SoldItemsTrends {
             id: item.id || this.generateId('solditem'),
             label,
             price,
+            quantity,
             photo,
             createdAt,
             updatedAt

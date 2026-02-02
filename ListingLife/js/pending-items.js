@@ -129,6 +129,39 @@ class PendingItemsManager {
         if (this.movePendingCategory) {
             this.movePendingCategory.addEventListener('change', () => this.handleMoveCategoryChange());
         }
+        
+        // Fix subcategory dropdown to open downward instead of upward
+        if (this.movePendingSubcategory) {
+            this.movePendingSubcategory.addEventListener('focus', () => {
+                // Scroll the select into view with space below for dropdown
+                setTimeout(() => {
+                    this.movePendingSubcategory.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'nearest',
+                        inline: 'nearest'
+                    });
+                }, 10);
+            });
+            
+            this.movePendingSubcategory.addEventListener('mousedown', (e) => {
+                // Ensure dropdown opens downward by scrolling into view
+                setTimeout(() => {
+                    const rect = this.movePendingSubcategory.getBoundingClientRect();
+                    const viewportHeight = window.innerHeight;
+                    const spaceBelow = viewportHeight - rect.bottom;
+                    const spaceAbove = rect.top;
+                    
+                    // If there's more space above than below, scroll down to create space
+                    if (spaceAbove > spaceBelow && spaceBelow < 300) {
+                        this.movePendingSubcategory.scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'center',
+                            inline: 'nearest'
+                        });
+                    }
+                }, 10);
+            });
+        }
 
         // Create period form
         if (this.createPeriodFromPendingForm) {
